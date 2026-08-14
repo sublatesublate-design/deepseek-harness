@@ -28,6 +28,12 @@ Sandbox mode and approval policy remain separate enforcement axes. Plan mode nei
 
 The active state contributes the deployment's section at prompt order 50. Inactive state contributes no section, while `exit_plan_mode` remains registered in both states, so a transition changes the logged request header but not native tool schemas or the Code Mode SDK. A user-driven transition appends one plugin-sourced notice only when the last request header described the opposite state; a pre-first-request or net-zero selection adds none, and an approved tool exit relies on its tool result instead of a second notice.
 
+### Execution enforcement
+
+Plan mode registers a monotonic executor guard. `ToolDefinition.effect` classifies the strongest effect any valid call can have as `observe`, `interact`, `mutate`, or `orchestrate`; omitted metadata is unclassified. Active plan mode allows observation and interaction, and denies mutation, orchestration, and unclassified tools before their bodies run. The full catalog remains visible for stable Native schemas and Code Mode SDK output. `run_code` itself remains available as the Code Mode transport, while every nested binding re-enters the guard under its concrete definition.
+
+The effect vocabulary is generic tool policy metadata rather than a plan-specific name list. Mixed-effect tools declare their strongest valid behavior, so a shell cannot become trusted because one command string looks read-only. Unknown first- or third-party tools fail closed until their owners classify them. Sandbox and approval remain independent because they answer different questions: plan policy controls collaboration phase, sandbox confines execution, and approval obtains permission for a proposed action.
+
 ### Reviewed exit
 
 `exit_plan_mode` requires a calling agent in active plan mode and a non-empty markdown plan beginning with a heading. The user-questions question carries that exact plan as detail and offers `Approve` or `Keep planning` plus free-text feedback. Only one `Approve` selection with no custom text consents; every other answer stays in plan mode and returns corrective feedback to the model. An approved exit becomes a silent pending selection, leaving plan guidance active for the rest of the current tool batch and removing it before the next request.
@@ -53,13 +59,15 @@ The tool renders the submitted plan as a generic card titled by its first headin
 
 **Put flips in surface messages or store plans in files.** Rejected because the stance is a log-only fact and the tool argument already records the reviewable plan. Surface duplication spends model context, while a plan directory creates a second durable home.
 
-**Filter tools by a per-plan name allowlist or a global policy stack.** Rejected because mutability is a property of each tool, including future and MCP tools, rather than a list that every plan deployment must maintain. Effects metadata can establish a shared policy only when a concrete consumer exists; until then plan mode is guidance, not a security boundary.
+**Filter tools by a per-plan name allowlist or infer safety from arguments.** Rejected because effects belong to each tool, including future and MCP tools, rather than a list every plan deployment must maintain. Plan mode is now the concrete consumer for generic effect metadata. Classifying the strongest valid call keeps the executor deterministic and avoids treating shell text or other model-controlled arguments as an authority boundary.
 
 **Review through the approval seam or prose.** Rejected because a plan review is not a permission decision, needs the exact artifact and corrective free text, and must have a logged tool call as its structured transition. The user-questions seam supplies that contract.
 
 ## Verification
 
 - Package tests retain boundary ordering, retry, append-failure, HMR disposal, prompt assembly, stable native and Code Mode schemas, review outcomes, and invariant coverage through the boolean service.
+- Executor tests allow observation and interaction, deny mutation, orchestration, and unclassified tools, prove Code Mode bindings re-enter the guard, and prove HMR disposal removes the guard.
+- A full agent-loop integration drives a model-selected mutating call through the real registry and records the denial as an ordinary failed tool result without leaving plan mode.
 - Command tests cover bare `/plan`, `/plan <message>`, active `/plan off`, pending-entry cancellation, inactive idempotence, absence of `/mode` and `/review`, and effect-scoped removal.
 - The keyless TUI scenarios enter through `/plan <message>`, leave through `/plan off`, and prove that each committed `plan/mode` precedes the request header it changes, the entry message is logged under plan guidance, and the post-exit request omits that guidance.
 - The complete `exit_plan_mode` review arc is package-tested but has no assembled-application snapshot after the interactive ACP scenarios were retired; current keyless TUI scenarios cover command entry and direct exit only.
@@ -68,4 +76,4 @@ The tool renders the submitted plan as a generic card titled by its first headin
 
 The implementation has one vocabulary for one shipped feature. Adding another collaboration stance is an explicit design decision instead of a config entry, and automation clients do not acquire human mode controls through ACP. The migration intentionally rejects old `mode/set` logs and old `modes.plan.section` configuration under the repository's pre-release format policy.
 
-Plan state remains reconstructable and tool schemas remain stable, but an idle pending selection is lost if the process exits before the next boundary. Entering or leaving plan mode changes the prompt from order 50 onward, and a model that ignores the guidance can still mutate unless the deployment independently configures sandbox, approval, or filesystem policy.
+Plan state remains reconstructable and tool schemas remain stable, but an idle pending selection is lost if the process exits before the next boundary. Entering or leaving plan mode changes the prompt from order 50 onward. A model that ignores the guidance receives an executor denial for mutating, orchestration, or unclassified tools; deployments still configure sandbox and approval independently for confinement and permission outside this collaboration-phase rule.

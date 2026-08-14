@@ -218,10 +218,21 @@ export interface ToolOutputDefinition {
   presentationMeta?(args: unknown, value: JsonValue): JsonValue
 }
 
+/** Tool-side effects used by execution policies; absent metadata fails closed. */
+export type ToolEffect = 'observe' | 'interact' | 'mutate' | 'orchestrate'
+
 /** A registered tool: its schema plus the execution function. */
 export interface ToolDefinition extends ToolSchema {
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
+  /**
+   * Strongest effect any valid call can have. `observe` only reads existing
+   * state; `interact` asks or reports without changing project/external state;
+   * `mutate` changes state or controls a process; `orchestrate` can invoke
+   * other capabilities. Omission is intentionally unclassified so policies
+   * can deny unfamiliar tools rather than assuming safety. Never model-visible.
+   */
+  readonly effect?: ToolEffect
   /**
    * Run one accepted call and return only its canonical lossless-JSON value.
    * Async work must observe or forward `exec.signal` and settle only after its

@@ -6,6 +6,8 @@ Channel-neutral one-shot approval seam. `ctx.approval.request(req)` returns `all
 
 Each request must belong to an open agent turn. The service appends a paired `approval/asked` and `approval/decided` audit record, while the model sees only the resulting logged tool outcome. An aborted request resolves `cancelled`; an audit append that fails before commit rejects rather than returning an unlogged decision.
 
+Cold crash repair never replays an unanswered prompt or infers a grant. An unmatched `approval/asked` expires only when persistence closes its owning turn with `turn/end { kind: 'interrupted' }`; no synthetic `approval/decided` is added because no human outcome occurred. Any ordinary turn end with an unanswered approval is an invariant failure. The associated unfinished tool follows the session repair contract: a recorded start with no durable result becomes `TOOL_OUTCOME_UNKNOWN`, so resume verifies possible side effects instead of retrying blindly.
+
 Answerers are `approval/request` waterfall listeners. Return an outcome to answer for an owned agent or call `next()` to delegate. Agent-scoped listeners receive only that agent's requests; compose one terminal answerer per deployment because sibling listener order is not a policy priority mechanism. The ACP automation bridge supplies one-shot machine decisions for sessions it owns.
 
 `ApprovalPolicy` is `'ask'` or `'never'`. The effective value is the last `approval/policy` event, falling back to config; `setApprovalPolicy()` is the write path. `'never'` rejects before interactive dispatch. Both policies contribute their complete current meaning to the cache-safe runtime-context snapshot.

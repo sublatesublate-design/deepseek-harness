@@ -29,7 +29,7 @@ import type { ZodType } from 'zod'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
 // Type-only edge: resolves `ctx.commands` for the optional command child.
@@ -232,6 +232,17 @@ export class PlanModeController extends Service {
       },
     })
 
+    ctx.tools.guard((exec) => {
+      const agent = exec.agent
+      if (agent === undefined || !foldPlanMode(agent.session.events)) return undefined
+      // run_code is only a transport: every binding re-enters this guard with
+      // the concrete tool definition before its body can run.
+      if (exec.name === RUN_CODE_NAME) return undefined
+      const effect = ctx.tools.get(exec.name, agent)?.effect
+      if (effect === 'observe' || effect === 'interact') return undefined
+      return `plan mode blocks tool "${exec.name}"; use observational or user-interaction tools, or ${EXIT_PLAN_MODE}`
+    })
+
     // The plan projection unit (session-projection RFC): a pure double-event
     // fold serving clients the whole {active, pending} value. `command/run`
     // records the user's logged /plan selection (the handler calls `set()`
@@ -304,6 +315,7 @@ export class PlanModeController extends Service {
 
     ctx.tools.register(defineTool({
       name: EXIT_PLAN_MODE,
+      effect: 'interact',
       description: EXIT_DESCRIPTION,
       parameters: {
         plan: { type: 'string', required: true, description: 'The complete plan, as markdown, starting with a # heading that names it.' },

@@ -10,7 +10,10 @@ import type { ApiProxy } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { RpcId, type ClientRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { WebServer, WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
-import { API_PATH, apply, HOST_EVENTS_PATH, inject, MUX_EVENTS_PATH, type HostConnectionHandle } from '../src/index.ts'
+import {
+  API_PATH, apply, CONTROL_TOKEN_HEADER, HOST_EVENTS_PATH, inject, MUX_EVENTS_PATH,
+  type ConnectionConfig, type HostConnectionHandle,
+} from '../src/index.ts'
 
 /** Structural webServer fake recording both route registries. */
 function fakeHttpServer(
@@ -74,7 +77,7 @@ function fakeResponse(): { response: ServerResponse; state: { status?: number; b
   return { response, state }
 }
 
-async function mounted(config?: { trustedHosts?: string[] }): Promise<{
+async function mounted(config?: ConnectionConfig): Promise<{
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
   dispose: () => Promise<void>
@@ -147,6 +150,30 @@ describe('connection node half', () => {
     }, MUX_EVENTS_PATH), socket, Buffer.alloc(0))
     await ended
     expect(Buffer.concat(chunks).toString()).toContain('HTTP/1.1 403 Forbidden')
+    await dispose()
+  })
+
+  it('requires the configured control credential for HTTP and WebSocket API traffic', async () => {
+    const token = 'desktop-control-token-with-at-least-32-characters'
+    const { routes, upgrades, dispose } = await mounted({ controlToken: token })
+
+    const missing = fakeResponse()
+    await routes[0]!.handler(fakeRequest({ host: '127.0.0.1:3081' }, `${API_PATH}/auth-probe`), missing.response)
+    expect(missing.state).toMatchObject({ status: 401, body: 'unauthorized' })
+
+    const accepted = fakeResponse()
+    await routes[0]!.handler(fakeRequest({
+      host: '127.0.0.1:3081', [CONTROL_TOKEN_HEADER]: token,
+    }, `${API_PATH}/auth-probe`), accepted.response)
+    expect(accepted.state.status).toBe(204)
+
+    const socket = new PassThrough()
+    const chunks: Buffer[] = []
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+    const ended = once(socket, 'end')
+    await upgrades[0]!.handler(fakeRequest({ host: '127.0.0.1:3081' }, MUX_EVENTS_PATH), socket, Buffer.alloc(0))
+    await ended
+    expect(Buffer.concat(chunks).toString()).toContain('HTTP/1.1 401 Unauthorized')
     await dispose()
   })
 

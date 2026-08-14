@@ -435,6 +435,7 @@ export function applyWebFetchTool(ctx: Context, timeoutMs: number, maxOutputChar
 
   ctx.tools.register(defineTool({
     name: 'web_fetch',
+    effect: 'observe',
     description: 'Fetch the content of a specific HTTP(S) URL and return it decoded to text.',
     parameters: {
       url: { type: 'string', required: true, description: 'The HTTP(S) URL to fetch.' },

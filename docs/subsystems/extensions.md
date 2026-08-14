@@ -2,7 +2,7 @@
 
 English | [中文](extensions.zh.md)
 
-The extensions subsystem lets an agent define versioned Cordis packages, run their host and browser halves, and query approved runtime metadata before writing code. Package lifecycle and sandbox behavior belong to the [`packages/extensions`](../../packages/extensions/README.md) package group.
+The extensions subsystem lets an agent define versioned Cordis packages, run their host and browser halves, and query approved runtime metadata before writing code. Package lifecycle and sandbox behavior belong to the [`packages/extensions`](../../packages/extensions/README.md) package group. Optional deployment-plugin activation failures and retry state belong to the trusted-code [`plugin-fault-boundary`](../../packages/boot/plugin-fault-boundary/README.md) service.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -255,6 +255,44 @@ inspectPackage( agent: Agent, pluginId: CordisDynamicPluginId, packageId: Cordis
 Types: [Agent](core.md)
 
 Source: [`packages/extensions/cordis-host-runner/src/index.ts:124`](../../packages/extensions/cordis-host-runner/src/index.ts)
+
+<a id="ctxpluginfaults--pluginfaultregistry"></a>
+
+### `ctx.pluginFaults` — `PluginFaultRegistry`
+
+Registry consumed by boundary rows and trusted diagnostics surfaces.
+
+```ts cordis-catalog
+/**
+ * Return all live contained entries in registration order.
+ * @returns Immutable snapshots of the live registrations.
+ */
+list(): readonly ContainedPluginRecord[]
+
+/**
+ * Return one live contained entry.
+ * @param entryId - owning Loader row id.
+ * @returns the current snapshot, or undefined when no boundary owns the id.
+ */
+get(entryId: string): ContainedPluginRecord | undefined
+
+/**
+ * Retry one failed contained entry.
+ * @param entryId - owning Loader row id.
+ * @returns the target's settled status after the retry attempt.
+ */
+async retry(entryId: string): Promise<ContainedPluginRecord>
+
+/**
+ * Register the controller owned by one boundary row.
+ * @param entryId - owning Loader row id.
+ * @param controller - lifecycle controller created by the boundary wrapper.
+ * @returns disposer that removes this exact registration.
+ */
+attach(entryId: string, controller: BoundaryController): () => void
+```
+
+Source: [`packages/boot/plugin-fault-boundary/src/index.ts:20`](../../packages/boot/plugin-fault-boundary/src/index.ts)
 
 <a id="cordis-events"></a>
 

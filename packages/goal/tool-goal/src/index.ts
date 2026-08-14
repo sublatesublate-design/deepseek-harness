@@ -194,6 +194,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'get_goal',
+    effect: 'observe',
     description: GET_DESCRIPTION,
     parameters: {},
     output: GOAL_OUTPUT,

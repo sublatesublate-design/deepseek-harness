@@ -47,6 +47,8 @@ import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
+import * as ToolGit from '@deepseek-ai/dsh-tool-git'
+import * as ToolProjectMemory from '@deepseek-ai/dsh-tool-project-memory'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -327,6 +329,39 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-git',
+    dir: 'tool-git',
+    source: 'packages/git/tool-git/src/index.ts',
+    requires: ['ctx.tools', 'ctx.subprocess', 'ctx.systemPrompt', 'ctx.approval when git_commit executes'],
+    writes: ['tool/call', 'Git index for git_stage', 'Git history for an approved git_commit', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(ToolGit)
+    },
+    note:
+      'Status and diff are bounded observations; staging requires explicit paths. Every git_commit returns ask from tools/pre-execute, so it fails closed without an approval channel. The package exposes no remote mutation or history-rewrite tool.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-project-memory',
+    dir: 'tool-project-memory',
+    source: 'packages/context/tool-project-memory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.agents', 'ctx.fs', 'ctx.subprocess', 'ctx.systemPrompt'],
+    writes: [
+      'tool/call',
+      'fs/write-intent and .dsh-project-memory.json for memory_write or memory_archive',
+      'tool/result',
+      'one bounded startup user/message snapshot per session',
+    ],
+    async mount(ctx) {
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(LocalFileSystem)
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(ToolProjectMemory)
+    },
+    note:
+      'The first eligible session step receives ids, kinds, titles, and tags only. Entry bodies stay on disk until bounded search or exact read; writes use a version guard and archive preserves superseded history.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-terminal',

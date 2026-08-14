@@ -1,0 +1,29 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "Native desktop window for the DeepSeek Harness web application",
+  "version": "0.1.0-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/desktop"
+  },
+  "type": "module",
+  "main": "lib/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh": "workspace:^"
+  },
+  "devDependencies": {
+    "electron": "^37.2.6"
+  },
+  "files": [
+    "lib/*.js",
+    "assets"
+  ]
+}

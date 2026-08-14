@@ -12,6 +12,9 @@ export type PluginFiberPhase =
   | 'unloading'
   | null
 
+/** Failure behavior selected by the configured Loader row. */
+export type PluginFailurePolicy = 'fatal' | 'contained'
+
 /** One non-group Loader entry exposed to trusted clients. */
 export interface PluginInventoryEntry {
   readonly entryId: PluginEntryId
@@ -20,6 +23,12 @@ export interface PluginInventoryEntry {
   /** Effective Loader enablement, including disabled ancestor groups. */
   readonly enabled: boolean
   readonly fiberPhase: PluginFiberPhase
+  /** Whether activation failure aborts composition or stays behind an explicit boundary. */
+  readonly failurePolicy: PluginFailurePolicy
+  /** Bounded failure detail for a contained plugin; absent for strict rows. */
+  readonly diagnostic?: string
+  /** Whether the contained plugin can currently be retried. */
+  readonly retryable: boolean
 }
 
 /** Point-in-time inventory returned by the plugin inventory Remote. */

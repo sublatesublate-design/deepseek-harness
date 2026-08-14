@@ -14,7 +14,8 @@ const PLAN_CONFIG = { section: 'Test plan mode instructions.' }
 /**
  * Full-loop integration: a scripted mock model drives the REAL plan-mode plugin
  * through the agent loop — the pending-intent flush at the step boundary, the
- * assembly the soft layer shapes (the exit tool + mode section), and the
+ * assembly the mode shapes (the exit tool + mode section), the execution
+ * guard applied to model-selected tools, and the
  * `request/header` snapshots every transition leaves.
  * Only the model is mocked; the loop, the session log, and the plugin are
  * real.
@@ -29,9 +30,10 @@ async function harness(adapter: MockAdapter): Promise<Context> {
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(PlanModeController, PLAN_CONFIG)
   ctx.llm.registerAdapter(['mock'], adapter)
-  for (const name of ['read', 'write']) {
+  for (const [name, effect] of [['read', 'observe'], ['write', 'mutate']] as const) {
     ctx.tools.register(defineContentToolFixture({
       name,
+      effect,
       description: `test tool ${name}`,
       parameters: {},
       execute: () => Promise.resolve([{ type: 'text', text: `ran ${name}` }]),
@@ -64,7 +66,7 @@ function findEvent<T extends SessionEvent['type']>(
 }
 
 describe('plan mode through the agent loop', () => {
-  it('a pre-turn set() makes the FIRST header plan-shaped, and a non-shell call is guidance-constrained only', async () => {
+  it('a pre-turn set() makes the FIRST header plan-shaped and blocks a mutating call', async () => {
     const adapter = new MockAdapter([
       toolCallResponse('call-1', 'write', {}, 'Writing during plan.'),
       textResponse('Noted in the plan.'),
@@ -85,11 +87,17 @@ describe('plan mode through the agent loop', () => {
     expect(header.data.header.tools?.map(tool => tool.name)).toEqual(['exit_plan_mode', 'read', 'write'])
     expect(header.data.header.system).toContain('plan mode')
 
-    // No tool gate: the write RUNS — plan restrains by the section's
-    // guidance alone (enforcement lives on the independent sandbox/approval
-    // axes). The mode itself stays plan throughout.
+    // The stable schema remains visible, but executor policy rejects the call
+    // before its body can run. The model receives the denial as a normal tool
+    // result and plan mode remains active.
     const result = findEvent(log, 'tool/result')
-    expect(result.data.message.content[0].isError).toBe(false)
+    expect(result.data.message.content[0]).toMatchObject({
+      isError: true,
+      content: [{
+        type: 'text',
+        text: 'Error: plan mode blocks tool "write"; use observational or user-interaction tools, or exit_plan_mode',
+      }],
+    })
     expect(foldPlanMode(log)).toBe(true)
     expect(log.some(event => event.type === 'user/message' && event.data.source.kind === 'plugin')).toBe(false)
   })

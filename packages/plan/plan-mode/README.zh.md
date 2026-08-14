@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-按 agent（智能体）分别记录到日志的 plan 协作状态，提供由部署方配置的引导内容、用于直接进入的 `/plan [message]` 命令、用于直接退出的 `/plan off` 命令，以及经用户评审的 `exit_plan_mode` 退出方式。Plan mode 是软引导；沙箱模式和批准策略各自强制执行限制，且不读写 plan 状态。
+按 agent（智能体）分别记录到日志的 plan 协作状态，提供由部署方配置的引导内容、用于直接进入的 `/plan [message]` 命令、用于直接退出的 `/plan off` 命令、安全拒绝未知能力的执行守卫，以及经用户评审的 `exit_plan_mode` 退出方式。沙箱模式和批准策略仍是独立的强制约束轴，且不读写 plan 状态。
 
 ## 持久状态
 
@@ -12,7 +12,7 @@
 
 ## 模型与人类交互
 
-激活时，`plan:policy` 会渲染已配置的 `section`。插件始终注册 `exit_plan_mode`，使工具 schema 在转换期间保持稳定；其 execute 路径只接受已激活的 plan mode，且只有通过 `ctx.userQuestions` 获得用户明确批准后才退出。
+激活时，`plan:policy` 会渲染已配置的 `section`。插件始终注册 `exit_plan_mode`，使工具 schema 在转换期间保持稳定。执行时，只允许分类为 `observe` 或 `interact` 的工具；`mutate`、`orchestrate` 和未分类工具会在主体运行前被拒绝。Code Mode 仍以 `run_code` 作为传输，但每个嵌套 binding 都会重新进入同一个守卫。退出工具只接受已激活的 plan mode，且只有通过 `ctx.userQuestions` 获得用户明确批准后才退出。
 
 评审问题声明 `plan-review` 呈现意图，并指名 `Approve` 为表示批准的标签，因此有能力的 UI 会把计划呈现为一次决定而非通用问题；两种情况下该工具读到的回答完全相同。放弃审阅——用户关闭请求，转而发言——会如实报告给模型，要求它留在 plan mode 中等待那条消息；其余每一种评审失败都保留 seam 自身的消息。
 
@@ -61,6 +61,20 @@ You are in plan mode. Explore and design before presenting the complete plan thr
 
 该段在 plan mode 内稳定，但进入或退出会从顺序 50 开始改变系统提示词。
 
+### 执行策略
+
+#### 模型所见内容
+
+Native 与 Code Mode 都会继续显示完整工具目录。如果模型在 plan mode 激活时调用修改型、编排型或未分类工具，它会收到一条失败的工具结果，其中指出被阻止的工具，并要求改用观察型或用户交互型工具，或者 `exit_plan_mode`。观察和用户交互仍可正常进行。
+
+#### Token 影响
+
+Effect 元数据不会对模型可见。只有被拒绝调用产生的常规工具结果会增加 token。
+
+#### KV Cache 影响
+
+守卫不会改变 schema 或生成的 Code Mode SDK，因此进入 plan mode 不会使工具目录前缀失效。
+
 ### 人类命令
 
 #### 模型所见内容
@@ -91,7 +105,8 @@ mode 转换不改变工具目录；plan 参数与评审结果按常规方式扩�
 
 ## 已知限制与暂缓事项
 
-- Plan mode 只进行引导，而不强制执行；需要强制限制的部署必须分别配置沙箱与批准控制。
+- Shell 等混合效果工具声明其所有有效调用中最强的 effect，因此即使某次调用看似只读，plan mode 也会拒绝它。应添加用途明确的观察型工具，而不是在策略中解析命令。
+- 未提供 `effect` 元数据的第三方与 MCP 工具会在 plan mode 中安全拒绝，直到其适配器完成分类。
 - 如果进程在另一个被接受的轮内 pre-step 之前退出，某轮最后一个被接受的 pre-step 之后作出的选择会丢失，因此 UI 必须重新应用它。
 - Fork 的 agent 会继承已记录的 plan 状态，新 spawn 的 agent 则从未激活状态开始；不存在创建时 plan 选项。
 - 由另一个 agent 所有的存活子级无法打开 `exit_plan_mode` 审阅。该调用失败时会提示子级在最终结果中包含尚未解决的决策；仅有持久化 fork 谱系并不会阻止恢复为运行时根的会话打开该审阅。

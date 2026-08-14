@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Logged, per-agent plan collaboration state with deployment-owned guidance, direct `/plan [message]` entry and `/plan off` exit commands, and the reviewed `exit_plan_mode` exit. Plan mode is soft guidance; sandbox mode and approval policy enforce restrictions independently and do not read or write plan state.
+Logged, per-agent plan collaboration state with deployment-owned guidance, direct `/plan [message]` entry and `/plan off` exit commands, a fail-closed execution guard, and the reviewed `exit_plan_mode` exit. Sandbox mode and approval policy remain independent enforcement axes and do not read or write plan state.
 
 ## Durable state
 
@@ -12,7 +12,7 @@ Logged, per-agent plan collaboration state with deployment-owned guidance, direc
 
 ## Model and human interactions
 
-While active, `plan:policy` renders the configured `section`. The plugin always registers `exit_plan_mode`, keeping tool schemas stable across the transition; its execute path accepts only active plan mode and leaves it only after an exact user approval through `ctx.userQuestions`.
+While active, `plan:policy` renders the configured `section`. The plugin always registers `exit_plan_mode`, keeping tool schemas stable across the transition. At execution time it allows tools classified as `observe` or `interact`, and denies `mutate`, `orchestrate`, and unclassified tools before their bodies run. Code Mode keeps `run_code` as its transport, but every nested binding re-enters the same guard. The exit tool accepts only active plan mode and leaves it only after an exact user approval through `ctx.userQuestions`.
 
 The review question declares the `plan-review` presentation intent, naming `Approve` as the label that approves it, so a capable UI presents the plan as a decision instead of a generic question; the answer the tool reads is the same either way. A dismissed review — the user closing the request to speak instead — is reported to the model as such, telling it to stay in plan mode and wait for the message; every other review failure keeps the seam's own message.
 
@@ -61,6 +61,20 @@ Inactive mode adds no tokens; active mode adds the configured section to every r
 
 The section is stable within plan mode, but entering or leaving changes the system prompt from order 50 onward.
 
+### Execution policy
+
+#### What the model sees
+
+The complete tool catalog remains visible in Native and Code Mode. If the model calls a mutating, orchestration, or unclassified tool while plan mode is active, it receives a failed tool result naming the blocked tool and directing it to observational or user-interaction tools, or `exit_plan_mode`. Observation and user interaction continue normally.
+
+#### Token effect
+
+Effect metadata is never model-visible. Only a denied call's ordinary tool result adds tokens.
+
+#### KV Cache effect
+
+The guard does not change schemas or the generated Code Mode SDK, so entering plan mode does not invalidate the tool-catalog prefix.
+
 ### Human command
 
 #### What the model sees
@@ -91,7 +105,8 @@ Mode transitions do not change the tool catalog; plan arguments and review resul
 
 ## Known Limitations and Deferred Work
 
-- Plan mode guides rather than enforces; deployments that need enforced restrictions must configure sandbox and approval controls independently.
+- Shell and other mixed-effect tools declare their strongest possible effect, so plan mode rejects them even when a particular invocation appears read-only. Add a purpose-built observational tool instead of parsing commands in the policy.
+- Third-party and MCP tools without `effect` metadata fail closed in plan mode until their adapter classifies them.
 - A selection made after the turn's final accepted pre-step is lost if the process exits before another accepted in-turn pre-step, so the UI must reapply it.
 - Forked agents inherit logged plan state, while newly spawned agents begin inactive; there is no creation-time plan option.
 - A live child owned by another agent cannot open the `exit_plan_mode` review. The failed call tells the child to include the unresolved decision in its final result; durable fork lineage alone does not prevent a session resumed as a runtime root from opening the review.

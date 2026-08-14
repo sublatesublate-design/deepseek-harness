@@ -6,6 +6,8 @@
 
 每个请求都必须属于一个尚未结束的 agent（智能体）轮次。服务会追加一对 `approval/asked` 与 `approval/decided` 审计记录，而模型只会看到由此产生且已写入日志的工具结果。已中止的请求会解析为 `cancelled`；如果审计记录的追加在提交前失败，Promise 会被拒绝，而不会返回一项未记录的决定。
 
+冷崩溃修复绝不会重放尚未回答的提示或推定授权。只有当持久化以 `turn/end { kind: 'interrupted' }` 关闭所属轮次时，未配对的 `approval/asked` 才会过期；系统不会合成 `approval/decided`，因为人类并未作出决定。任何带着未回答审批的普通轮次结束都属于 invariant 失败。与之关联的未完成工具遵循会话修复约定：已记录启动但没有持久结果时会变为 `TOOL_OUTCOME_UNKNOWN`，因此恢复后必须先核查可能的副作用，而不是盲目重试。
+
 应答者是 `approval/request` waterfall（瀑布式事件）监听器。要回答其负责的 agent 请求，请返回一个结果；否则调用 `next()` 委托。限定到 agent 的监听器只接收该 agent 的请求；每项部署应当组合一个最终应答者，因为同级监听器的顺序不是策略优先级机制。ACP（Agent Client Protocol）自动化桥接层为其负责的会话提供一次性机器决定。
 
 `ApprovalPolicy` 为 `'ask'` 或 `'never'`。实际值取最后一条 `approval/policy` 事件，并回退到配置；`setApprovalPolicy()` 是写入路径。`'never'` 会在交互式分发之前拒绝请求。两种策略都会将各自完整的当前含义贡献给缓存安全的运行时上下文快照。

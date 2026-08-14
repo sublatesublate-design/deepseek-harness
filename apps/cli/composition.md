@@ -12,6 +12,8 @@ flowchart LR
   cfg --> plugin_dsh_base_timer
   plugin_dsh_base_hmr["hmr<br/>@deepseek-ai/cordis-plugin-hmr"]
   cfg --> plugin_dsh_base_hmr
+  plugin_dsh_base_plugin_fault_boundary["plugin-fault-boundary<br/>@deepseek-ai/dsh-plugin-fault-boundary"]
+  cfg --> plugin_dsh_base_plugin_fault_boundary
   plugin_dsh_base_llm["llm<br/>@deepseek-ai/dsh-llm"]
   cfg --> plugin_dsh_base_llm
   plugin_dsh_base_session["session<br/>@deepseek-ai/dsh-session"]
@@ -170,6 +172,7 @@ flowchart LR
 | --- | --- |
 | `timer` | `@deepseek-ai/cordis-plugin-timer` |
 | `hmr` | `@deepseek-ai/cordis-plugin-hmr` |
+| `plugin-fault-boundary` | `@deepseek-ai/dsh-plugin-fault-boundary` |
 | `llm` | `@deepseek-ai/dsh-llm` |
 | `session` | `@deepseek-ai/dsh-session` |
 | `typert` | `@deepseek-ai/dsh-typert-registry` |

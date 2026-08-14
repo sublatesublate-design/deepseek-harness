@@ -41,6 +41,27 @@ describe('approval invariants', () => {
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
   })
 
+  it('expires an unanswered question only at an interrupted crash boundary', async () => {
+    const ctx = await setup()
+    const session = ctx.sessions.create()
+    startTurn(session)
+    const id = ApprovalRequestId('ask-crashed')
+    session.append('approval/asked', { id, toolName: 'bash' })
+    session.append('turn/end', { turn: 1, reason: { kind: 'interrupted' } })
+    session.append('turn/start', { turn: 2 })
+    expect(() => session.append('approval/decided', { id, outcome: 'allowed-once' }))
+      .toThrow(/no matching approval\/asked/)
+  })
+
+  it('rejects an ordinary turn end with an unanswered question', async () => {
+    const ctx = await setup()
+    const session = ctx.sessions.create()
+    startTurn(session)
+    session.append('approval/asked', { id: ApprovalRequestId('ask-open'), toolName: 'bash' })
+    expect(() => session.append('turn/end', { turn: 1, reason: { kind: 'completed' } }))
+      .toThrow(/leaves unanswered approval requests/)
+  })
+
   it('adopts a bare session first observed through publication', async () => {
     const ctx = await setup()
     const session = Session.create(SessionId('bare-approval-session'))

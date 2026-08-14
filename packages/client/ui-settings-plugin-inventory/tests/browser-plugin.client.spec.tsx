@@ -17,6 +17,9 @@ const EMPTY = { entries: [] }
 type ListResult =
   | { readonly ok: true; readonly value: typeof EMPTY }
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+type RetryResult =
+  | { readonly ok: true; readonly value: never }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
 
 async function bench() {
   const ctx = new Context()
@@ -31,8 +34,10 @@ async function bench() {
   new RemoteService(ctx)
   const list = vi.fn<() => Promise<ListResult>>()
     .mockResolvedValue({ ok: true, value: EMPTY })
-  ctx.provide('remote.pluginInventory', { list })
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list }
+  const retry = vi.fn<() => Promise<RetryResult>>()
+    .mockResolvedValue({ ok: true, value: undefined as never })
+  ctx.provide('remote.pluginInventory', { list, retry })
+  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, list, retry }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -64,6 +69,8 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     expect(b.list).toHaveBeenCalledOnce()
     b.list.mockResolvedValueOnce({ ok: false, error: { code: 'REMOTE_ERROR', message: 'unavailable' } })
     await expect(injected.list()).rejects.toThrow('pluginInventory.list failed: REMOTE_ERROR: unavailable')
+    b.retry.mockResolvedValueOnce({ ok: false, error: { code: 'REMOTE_ERROR', message: 'retry unavailable' } })
+    await expect(injected.retry('entry' as never)).rejects.toThrow('pluginInventory.retry failed: REMOTE_ERROR: retry unavailable')
     await b.ctx.fiber.dispose()
   })
 

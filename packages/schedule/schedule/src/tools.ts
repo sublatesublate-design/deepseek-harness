@@ -398,6 +398,7 @@ export function registerScheduleTools(
 
     disposers.push(toolCtx.tools.register(defineTool({
       name: 'schedule_list',
+      effect: 'observe',
       description: LIST_DESCRIPTION,
       parameters: {},
       output: { schema: LIST_OUTPUT_SCHEMA, render: renderValue },

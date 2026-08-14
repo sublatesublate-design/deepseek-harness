@@ -83,6 +83,18 @@ describe('ToolRuntime', () => {
     expect('timeoutMs' in (schema as object)).toBe(false)
   })
 
+  it('schemas() excludes effect — policy metadata must never reach the model', async () => {
+    const ctx = await setup()
+    ctx.tools.register(defineContentToolFixture({
+      name: 'observer', effect: 'observe', description: 'reads state', parameters: {},
+      async execute() { return [{ type: 'text' as const, text: 'ok' }] },
+    }))
+    const schema = ctx.tools.schemas().find(s => s.name === 'observer')
+    expect(schema).toBeDefined()
+    expect('effect' in (schema as object)).toBe(false)
+    expect(ctx.tools.get('observer')?.effect).toBe('observe')
+  })
+
   it('executes a tool and returns its content', async () => {
     const ctx = await setup()
     ctx.tools.register(echoTool)
@@ -2696,6 +2708,19 @@ describe('defineTool validation (the runtime-validation Agent Note, part 1)', ()
       async execute() { return [{ type: 'text' as const, text: 'ok' }] },
     })
     expect(tool.timeoutMs).toBeUndefined()
+  })
+
+  it('attaches effect when declared and omits it otherwise', () => {
+    const observed = defineContentToolFixture({
+      name: 'observed', effect: 'observe', description: 'd', parameters: {},
+      async execute() { return [{ type: 'text' as const, text: 'ok' }] },
+    })
+    const unclassified = defineContentToolFixture({
+      name: 'unclassified', description: 'd', parameters: {},
+      async execute() { return [{ type: 'text' as const, text: 'ok' }] },
+    })
+    expect(observed.effect).toBe('observe')
+    expect(unclassified.effect).toBeUndefined()
   })
 
   it('throws when timeoutMs is zero or negative', () => {

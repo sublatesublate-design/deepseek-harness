@@ -13,22 +13,26 @@ afterEach(cleanup)
 type Snapshot = Awaited<ReturnType<PluginInventorySettingsTabInjected['list']>>
 const t = ((key: PluginInventoryLocaleKey): string => en[key]) as PluginInventorySettingsTabProps['t']
 
-function props(list: PluginInventorySettingsTabInjected['list']): PluginInventorySettingsTabProps {
+function props(
+  list: PluginInventorySettingsTabInjected['list'],
+  retry: PluginInventorySettingsTabInjected['retry'] = vi.fn(),
+): PluginInventorySettingsTabProps {
   return {
     t,
     list,
+    retry,
   } as PluginInventorySettingsTabProps
 }
 
 const SNAPSHOT = {
   entries: [
-    { entryId: '8a1b2c3d', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active' },
-    { entryId: 'pending', moduleName: 'cordis:pending-name', enabled: true, fiberPhase: 'pending' },
-    { entryId: 'loading', moduleName: '@fixture/loading-name', enabled: true, fiberPhase: 'loading' },
-    { entryId: 'failed', moduleName: '@fixture/failed-name', enabled: true, fiberPhase: 'failed' },
-    { entryId: 'unloading', moduleName: '@fixture/unloading-name', enabled: true, fiberPhase: 'unloading' },
-    { entryId: 'unobserved', moduleName: '@fixture/unobserved-name', enabled: true, fiberPhase: null },
-    { entryId: 'disabled-entry', moduleName: '@deepseek-ai/dsh-host-directory-picker-native', enabled: false, fiberPhase: null },
+    { entryId: '8a1b2c3d', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', failurePolicy: 'fatal', retryable: false },
+    { entryId: 'pending', moduleName: 'cordis:pending-name', enabled: true, fiberPhase: 'pending', failurePolicy: 'fatal', retryable: false },
+    { entryId: 'loading', moduleName: '@fixture/loading-name', enabled: true, fiberPhase: 'loading', failurePolicy: 'fatal', retryable: false },
+    { entryId: 'failed', moduleName: '@fixture/failed-name', enabled: true, fiberPhase: 'failed', failurePolicy: 'contained', diagnostic: 'fixture activation failed', retryable: true },
+    { entryId: 'unloading', moduleName: '@fixture/unloading-name', enabled: true, fiberPhase: 'unloading', failurePolicy: 'fatal', retryable: false },
+    { entryId: 'unobserved', moduleName: '@fixture/unobserved-name', enabled: true, fiberPhase: null, failurePolicy: 'fatal', retryable: false },
+    { entryId: 'disabled-entry', moduleName: '@deepseek-ai/dsh-host-directory-picker-native', enabled: false, fiberPhase: null, failurePolicy: 'fatal', retryable: false },
   ],
 } as unknown as Snapshot
 
@@ -42,6 +46,8 @@ describe('PluginInventorySettingsTab', () => {
     await act(async () => { deferred.resolve(SNAPSHOT) })
     expect(list).toHaveBeenCalledOnce()
     expect(screen.getByRole('searchbox', { name: en.search })).toBeTruthy()
+    expect(screen.getByText(en.trustTitle)).toBeTruthy()
+    expect(screen.getByText(en.trustBody)).toBeTruthy()
     expect(screen.getByRole('heading', { name: en.catalog })).toBeTruthy()
     expect(view.container.querySelector('[data-plugin-count]')?.textContent).toBe('7')
     expect(screen.getAllByRole('listitem')).toHaveLength(7)
@@ -106,6 +112,38 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.click(screen.getByRole('button', { name: en.retry }))
     await waitFor(() => { expect(list).toHaveBeenCalledTimes(2) })
     expect(await screen.findByText(en.empty)).toBeTruthy()
+  })
+
+  it('shows contained diagnostics and replaces the row after a successful retry', async () => {
+    const retry = vi.fn<PluginInventorySettingsTabInjected['retry']>().mockResolvedValue({
+      entryId: 'failed',
+      moduleName: '@fixture/failed-name',
+      enabled: true,
+      fiberPhase: 'active',
+      failurePolicy: 'contained',
+      retryable: false,
+    } as never)
+    render(<PluginInventorySettingsTab {...props(async () => SNAPSHOT, retry)} />)
+    const row = await screen.findByRole('button', { name: 'failed-name, Mount failed, Enabled' })
+    fireEvent.click(row)
+    expect(screen.getByText('fixture activation failed')).toBeTruthy()
+    expect(screen.getByText(en.containedPolicy)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: en.retryPlugin }))
+    await waitFor(() => { expect(retry).toHaveBeenCalledWith('failed') })
+    expect(await screen.findByRole('button', { name: 'failed-name, Mounted, Enabled' })).toBeTruthy()
+    expect(screen.queryByText('fixture activation failed')).toBeNull()
+    expect(screen.queryByRole('button', { name: en.retryPlugin })).toBeNull()
+  })
+
+  it('contains retry transport details behind a generic row error', async () => {
+    const retry = vi.fn<PluginInventorySettingsTabInjected['retry']>()
+      .mockRejectedValue(new Error('private retry transport detail'))
+    render(<PluginInventorySettingsTab {...props(async () => SNAPSHOT, retry)} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'failed-name, Mount failed, Enabled' }))
+    fireEvent.click(screen.getByRole('button', { name: en.retryPlugin }))
+    expect((await screen.findByRole('alert')).textContent).toBe(en.retryPluginError)
+    expect(screen.queryByText('private retry transport detail')).toBeNull()
   })
 
   it('contains a synchronous Remote failure and ignores a result after unmount', async () => {

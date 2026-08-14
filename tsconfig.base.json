@@ -235,6 +235,7 @@
         "./packages/e2b/*/src",
         "./packages/code-runtime/*/src",
         "./packages/fs/*/src",
+        "./packages/git/*/src",
         "./packages/lsp/*/src",
         "./packages/skill/*/src",
         "./packages/compaction/*/src",

@@ -12,6 +12,8 @@ import css from './PluginInventorySettingsTab.module.css'
 export interface PluginInventorySettingsTabInjected {
   /** Read a current Host inventory snapshot. */
   list: () => Promise<PluginInventorySnapshot>
+  /** Retry one failed plugin mounted behind an explicit fault boundary. */
+  retry: (entryId: PluginInventoryEntry['entryId']) => Promise<PluginInventoryEntry>
 }
 
 type PluginInventoryEntry = PluginInventorySnapshot['entries'][number]
@@ -60,12 +62,14 @@ function matches(entry: PluginInventoryEntry, normalizedQuery: string): boolean 
     .some(value => value.toLocaleLowerCase().includes(normalizedQuery))
 }
 
-/** Render the read-only current Loader inventory. */
-export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsTabProps): ReactNode {
+/** Render current Loader state and bounded recovery for contained failures. */
+export function PluginInventorySettingsTab({ list, retry: retryEntry, t }: PluginInventorySettingsTabProps): ReactNode {
   const catalogId = useId()
   const [request, setRequest] = useState(0)
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState<PluginInventoryEntry['entryId'] | null>(null)
+  const [retrying, setRetrying] = useState<PluginInventoryEntry['entryId'] | null>(null)
+  const [retryFailed, setRetryFailed] = useState<PluginInventoryEntry['entryId'] | null>(null)
   const [state, setState] = useState<ViewState>({ status: 'loading' })
 
   useEffect(() => {
@@ -96,6 +100,30 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
     setRequest(value => value + 1)
   }
 
+  const retryPlugin = (entry: PluginInventoryEntry): void => {
+    setRetrying(entry.entryId)
+    setRetryFailed(null)
+    void Promise.resolve().then(() => retryEntry(entry.entryId)).then(
+      (updated) => {
+        setState(current => current.status === 'ready'
+          ? {
+            status: 'ready',
+            snapshot: {
+              entries: current.snapshot.entries.map(candidate => (
+                candidate.entryId === updated.entryId ? updated : candidate
+              )),
+            },
+          }
+          : current)
+        setRetrying(null)
+      },
+      () => {
+        setRetrying(null)
+        setRetryFailed(entry.entryId)
+      },
+    )
+  }
+
   return (
     <div className={css.section} aria-busy={state.status === 'loading'}>
       {state.status === 'loading' ? <p className={css.status}>{t('loading')}</p> : null}
@@ -107,6 +135,10 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
       ) : null}
       {state.status === 'ready' ? (
         <div className={css.catalog}>
+          <aside className={css.trustNotice} aria-labelledby={`${catalogId}-trust-title`}>
+            <strong id={`${catalogId}-trust-title`}>{t('trustTitle')}</strong>
+            <span>{t('trustBody')}</span>
+          </aside>
           <label className={css.search}>
             <IconSearchOutline16 aria-hidden="true" />
             <span className={css.visuallyHidden}>{t('search')}</span>
@@ -132,6 +164,7 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
                 const status = phaseLabel(entry.fiberPhase, t)
                 const title = moduleShortName(entry.moduleName)
                 const configuration = t(entry.enabled ? 'enabledTag' : 'disabledTag')
+                const failurePolicy = t(entry.failurePolicy === 'contained' ? 'containedPolicy' : 'fatalPolicy')
                 const open = expanded === entry.entryId
                 const detailId = `${catalogId}-details-${encodeURIComponent(entry.entryId)}`
                 return (
@@ -182,7 +215,28 @@ export function PluginInventorySettingsTab({ list, t }: PluginInventorySettingsT
                               <dd>{status}</dd>
                             </div>
                           ) : null}
+                          <div>
+                            <dt>{t('failurePolicy')}</dt>
+                            <dd>{failurePolicy}</dd>
+                          </div>
+                          {entry.diagnostic !== undefined ? (
+                            <div>
+                              <dt>{t('diagnostic')}</dt>
+                              <dd className={css.diagnostic}>{entry.diagnostic}</dd>
+                            </div>
+                          ) : null}
                         </dl>
+                        {entry.retryable ? (
+                          <button
+                            className={css.retryButton}
+                            type="button"
+                            disabled={retrying === entry.entryId}
+                            onClick={() => { retryPlugin(entry) }}
+                          >
+                            {retrying === entry.entryId ? t('retryingPlugin') : t('retryPlugin')}
+                          </button>
+                        ) : null}
+                        {retryFailed === entry.entryId ? <p className={css.retryError} role="alert">{t('retryPluginError')}</p> : null}
                       </div>
                     ) : null}
                   </li>

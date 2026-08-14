@@ -147,6 +147,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Companion subpaths register owner-local checks; the service owns selection, uniqueness, child fibers, and package-attributed failures.',
   },
   {
+    key: 'pluginFaults',
+    pkg: 'plugin-fault-boundary',
+    title: 'Optional plugin activation failures',
+    mode: 'core',
+    consumers: ['plugin-inventory'],
+    note: 'Explicit boundary rows publish bounded failure state and serialized retry; plugins remain trusted in-process code.',
+  },
+  {
     key: 'typert',
     pkg: 'typert-registry',
     title: 'Runtime type registry',

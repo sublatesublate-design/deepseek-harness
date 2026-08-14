@@ -27,6 +27,8 @@
 | `@deepseek-ai/dsh-tool-str-replace-editor` | `str_replace_editor` | `ctx.tools`、`ctx.fs` | `tool/call`、`fs/observed after view presence/absence, edit absence, or successful mutation`、`tool/result` | - | 基于文件系统 seam 的独立查看／创建／唯一字面量替换／按行插入工具；可与任何 shell 或终端接口组合。 |
 | `@deepseek-ai/dsh-tool-fs` | `edit`、`read`、`read_image`、`write` | `ctx.tools`、`ctx.fs`、`ctx.systemPrompt`、`ctx.attachments (read_image registration)`、`ctx.llm + an image-capable route (read_image execution)` | `tool/call`、`fs/write-intent or fs/edit-intent for mutations`、`fs/observed after read presence/absence or successful file operation`、`durable attachment (read_image)`、`tool/result` | - | 先读后写／编辑策略由 `@deepseek-ai/dsh-fs-observation-policy` 添加；它是一个 `fs/*` 事件门禁插件，不会改变 schema。加载这些工具的部署按预期也应加载该插件。没有 `ctx.attachments` 时 `read_image` 不会注册；其 schema 与路由无关，执行时除非确切路由的模型声明图像输入，否则拒绝。 |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`、`grep` | `ctx.tools`、`ctx.subprocess`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn 随包提供的 ripgrep 二进制文件（`@vscode/ripgrep`），并作为普通前台调用运行，绝不作为后台任务；无需在宿主机安装 `rg`，也不经过 shell 层。本目录使用 `sampleOverCapGlobResults: true`；部署必须显式选择该行为。结果超过上限时，会通过可选的 ctx.spillStore 后端保存完整的格式化列表；在共置部署中，如果后端公开本地路径，返回的定位信息可供后续读取／搜索。 |
+| `@deepseek-ai/dsh-tool-git` | `git_commit`、`git_diff`、`git_stage`、`git_status` | `ctx.tools`、`ctx.subprocess`、`ctx.systemPrompt`、`git_commit 执行时的 ctx.approval` | `tool/call`、`git_stage 修改 Git 暂存区`、`获批的 git_commit 修改 Git 历史`、`tool/result` | - | status 和 diff 是有界只读操作；暂存要求明确路径。每次 git_commit 都从 tools/pre-execute 返回 ask，因此没有审批通道时会以拒绝结束。该包不提供远程修改或历史重写工具。 |
+| `@deepseek-ai/dsh-tool-project-memory` | `memory_archive`、`memory_read`、`memory_search`、`memory_write` | `ctx.tools`、`ctx.agents`、`ctx.fs`、`ctx.subprocess`、`ctx.systemPrompt` | `tool/call`、`memory_write 或 memory_archive 触发 fs/write-intent 并修改 .dsh-project-memory.json`、`tool/result`、`每个会话一次有界启动 user/message 快照` | - | 会话第一次进入有效步骤时只接收 id、类型、标题和标签。正文留在磁盘，直到有界搜索或精确读取；写入使用版本守卫，归档则保留已取代内容的历史。 |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`、`terminal_list`、`terminal_open`、`terminal_read`、`terminal_send`、`terminal_signal` | `ctx.tools`、`ctx.terminals`、`ctx.systemPrompt`、`ctx.jobs at call time for run_in_background` | `tool/call`、`tool/result` | - | 这 6 个终端工具需要选择启用，用于补充一次性 bash／文件系统工具。`terminal_send(run_in_background: true)` 会注册到 `ctx.jobs`；schema 不包含 TUI、具名按键序列、BEL、调整尺寸、自动启动和跨 agent 共享。 |
 | `@deepseek-ai/dsh-tool-goal` | `create_goal`、`get_goal`、`update_goal` | `ctx.tools`、`ctx.agents`、`ctx.goals`、`ctx.systemPrompt`、`a calling Agent in an authorized open turn` | `tool/call`、`goal/change for mutations`、`tool/result` | - | create、edit、pause 和 resume 要求直接来自人类的根权限；complete 和 blocked 也接受确切的当前 Goal Round。blocked 的默认下限是 3 个获准的 Round。 |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`、`schedule_delete`、`schedule_list` | `ctx.tools`、`ctx.sessions`、Session 持久化、未来创建的 live 根 Agent | `tool/call`、`schedule/change create or delete`、`tool/result` | - | 仅在选择启用的 Schedule 插件加载后创建的 live 根 Agent scope 内注册。版本 1 接受 after_seconds、显式绝对 at 和有界固定速率 every_seconds，并披露 session-local 交付；管理读取与变更必须通过共享的 Session 持久化 barrier。 |
@@ -776,6 +778,233 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 来源：[`packages/fs/tool-fs-search/src/index.ts`](../packages/fs/tool-fs-search/src/index.ts)
 
 glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn 随包提供的 ripgrep 二进制文件（`@vscode/ripgrep`），并作为普通前台调用运行，绝不作为后台任务；无需在宿主机安装 `rg`，也不经过 shell 层。本目录使用 `sampleOverCapGlobResults: true`；部署必须显式选择该行为。结果超过上限时，会通过可选的 ctx.spillStore 后端保存完整的格式化列表；在共置部署中，如果后端公开本地路径，返回的定位信息可供后续读取／搜索。
+
+<a id="deepseek-aidsh-tool-git"></a>
+
+## `@deepseek-ai/dsh-tool-git`
+
+### `git_commit`
+
+在取得一次新的人工批准后，根据现有暂存区创建提交。不会暂存文件，也不会连接远程仓库。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Non-blank commit subject and optional body."
+    }
+  },
+  "required": [
+    "message"
+  ]
+}
+```
+
+来源：[`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+### `git_diff`
+
+读取有界的工作区或暂存区差异，也可限制在明确指定的路径内。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "staged": {
+      "type": "boolean",
+      "description": "When true, compare the index to HEAD; otherwise read unstaged changes."
+    },
+    "paths": {
+      "type": "array",
+      "description": "Optional explicit repository-relative paths.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context_lines": {
+      "type": "number",
+      "description": "Diff context lines, from 0 through 20. Defaults to 3."
+    }
+  }
+}
+```
+
+来源：[`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+### `git_stage`
+
+只暂存或取消暂存调用者明确给出的仓库路径。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "stage | unstage",
+      "enum": [
+        "stage",
+        "unstage"
+      ]
+    },
+    "paths": {
+      "type": "array",
+      "description": "Explicit repository-relative paths; an empty list is rejected.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "action",
+    "paths"
+  ]
+}
+```
+
+来源：[`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+### `git_status`
+
+读取仓库根目录、分支、HEAD，以及已暂存、未暂存和未跟踪路径，不改变 Git 状态。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+status 和 diff 是有界只读操作；暂存要求明确路径。每次 git_commit 都从 tools/pre-execute 返回 ask，因此没有审批通道时会以拒绝结束。该包不提供远程修改或历史重写工具。
+
+<a id="deepseek-aidsh-tool-project-memory"></a>
+
+## `@deepseek-ai/dsh-tool-project-memory`
+
+### `memory_archive`
+
+归档一条已经失效或被取代的项目记忆，不删除其审计历史。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Exact active entry id."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+来源：[`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+### `memory_read`
+
+在搜索或查看启动索引后，通过 id 精确读取一条项目记忆。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Eight-character id from memory_search or the startup index."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+来源：[`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+### `memory_search`
+
+按标题、标签和正文搜索活动的项目记忆；只返回有界元数据和摘要，不返回完整条目。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Non-blank terms describing the decision, convention, fact, or pitfall to recall."
+    },
+    "limit": {
+      "type": "number",
+      "description": "Maximum hits, from 1 through 8. Defaults to 8."
+    },
+    "include_archived": {
+      "type": "boolean",
+      "description": "Include archived entries when investigating superseded history."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+来源：[`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+### `memory_write`
+
+创建一条简洁、持久的项目记忆，或在保留 id 的前提下替换一条明确的现有记忆。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Existing id to replace. Omit to create a new entry."
+    },
+    "kind": {
+      "type": "string",
+      "description": "decision | convention | fact | pitfall",
+      "enum": [
+        "decision",
+        "convention",
+        "fact",
+        "pitfall"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Concise unique title, at most 160 characters."
+    },
+    "content": {
+      "type": "string",
+      "description": "Durable fact and why it matters, at most 4000 characters."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Up to 16 short retrieval labels.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "title",
+    "content"
+  ]
+}
+```
+
+来源：[`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+会话第一次进入有效步骤时只接收 id、类型、标题和标签。正文留在磁盘，直到有界搜索或精确读取；写入使用版本守卫，归档则保留已取代内容的历史。
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 

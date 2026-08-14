@@ -29,6 +29,12 @@ function validateApprovalEvent(
   event: SessionEvent,
   fail: InvariantFailure,
 ): ApprovalTransition | undefined {
+  if (event.type === 'turn/end') {
+    if (trace.pending.size > 0 && event.data.reason.kind !== 'interrupted') {
+      fail('turn/end leaves unanswered approval requests without an interrupted crash boundary')
+    }
+    return undefined
+  }
   if (event.type === 'approval/asked') {
     if (trace.openTurn === null) fail('approval/asked appended outside any open turn')
     if (event.data.toolName.length === 0) fail('approval/asked toolName must be non-empty')
@@ -66,9 +72,12 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     traces.set(session, trace)
     for (const event of session.events) {
       if (event.type === 'turn/start') trace.openTurn = event.data.turn
-      else if (event.type === 'turn/end') trace.openTurn = null
       const transition = validateApprovalEvent(trace, event, fail)
       if (transition !== undefined) applyApprovalTransition(trace.pending, transition)
+      if (event.type === 'turn/end') {
+        trace.pending.clear()
+        trace.openTurn = null
+      }
     }
     return trace
   }
@@ -83,6 +92,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       return
     }
     if (event.type === 'turn/end') {
+      trace.pending.clear()
       trace.openTurn = null
       return
     }

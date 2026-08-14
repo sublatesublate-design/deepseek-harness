@@ -295,6 +295,7 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(defineTool({
     name: 'terminal_read',
+    effect: 'observe',
     description: 'Read a bounded page of retained output from a persistent terminal without sending input.',
     parameters: {
       sessionId: { type: 'string', required: true, description: 'Terminal session id.' },
@@ -384,6 +385,7 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(defineTool({
     name: 'terminal_list',
+    effect: 'observe',
     description: 'List persistent terminal sessions owned by the current agent.',
     parameters: {},
     finalizeContent,

@@ -223,6 +223,7 @@ export function applyWebSearchTool(
 
   ctx.tools.register(defineTool({
     name: 'web_search',
+    effect: 'observe',
     description: 'Search the web for current information. Returns an optional summary answer and a list of source URLs.',
     parameters: {
       query: { type: 'string', required: true, description: 'The search query.' },

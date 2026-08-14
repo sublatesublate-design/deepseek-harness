@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { RUN_CODE_NAME, defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import type { ToolEffect } from '@deepseek-ai/dsh-tools'
 import { Session, SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
@@ -120,10 +121,16 @@ function noticeTexts(session: Session): string[] {
     .map(event => (event.data as { content: { type: string; text?: string }[] }).content.map(block => block.text ?? '').join(''))
 }
 
-function registerNamedTools(ctx: Context, names: string[]): void {
+function registerNamedTools(
+  ctx: Context,
+  names: string[],
+  effects: Readonly<Partial<Record<string, ToolEffect>>> = {},
+): void {
   for (const name of names) {
+    const effect = effects[name]
     ctx.tools.register(defineContentToolFixture({
       name,
+      ...effect === undefined ? {} : { effect },
       description: `test tool ${name}`,
       parameters: {},
       execute: () => Promise.resolve([{ type: 'text', text: `ran ${name}` }]),
@@ -397,7 +404,7 @@ describe('the boundary flush', () => {
   })
 })
 
-describe('the soft layer', () => {
+describe('stable plan presentation', () => {
   it('keeps the tool schemas identical across default and plan mode', async () => {
     const ctx = await setup()
     registerNamedTools(ctx, ['read', 'write'])
@@ -466,8 +473,8 @@ describe('the soft layer', () => {
     const agent = await agentWithSession(ctx, 'agent-1', { active: true })
     const assembly = await assembleFor(ctx, agent)
     expect(assembly.tools.map(tool => tool.name)).toEqual(['run_code'])
-    // The SDK documents the full binding set plus the exit; plan mode never
-    // prunes capabilities and restrains through guidance alone.
+    // The SDK documents the full binding set plus the exit; execution policy
+    // denies unsafe bindings without changing the request prefix.
     const sdk = assembly.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
     expectPlanCodeSdkBindings(sdk)
   })
@@ -525,7 +532,7 @@ describe('the soft layer', () => {
   })
 })
 
-describe('no execution gating beyond the exit tool', () => {
+describe('plan execution guard', () => {
   it('passes agent-less and default-mode executions through', async () => {
     const ctx = await setup()
     registerNamedTools(ctx, ['write'])
@@ -536,14 +543,70 @@ describe('no execution gating beyond the exit tool', () => {
     expect(defaulted.isError).toBe(false)
   })
 
-  it('runs every call in plan mode untouched — guidance and enforcement are separate axes', async () => {
+  it('allows observation and interaction while denying mutation, orchestration, and unclassified tools', async () => {
     const ctx = await setup()
-    registerNamedTools(ctx, ['read', 'write', 'bash'])
+    registerNamedTools(ctx, ['read', 'ask', 'write', 'workflow', 'legacy'], {
+      read: 'observe',
+      ask: 'interact',
+      write: 'mutate',
+      workflow: 'orchestrate',
+    })
     const agent = await agentWithSession(ctx, 'agent-1', { active: true })
-    for (const name of ['read', 'write', 'bash']) {
+
+    for (const name of ['read', 'ask']) {
       const result = await execute(ctx, name, agent)
       expect(result.isError).toBe(false)
     }
+    for (const name of ['write', 'workflow', 'legacy']) {
+      const result = await execute(ctx, name, agent)
+      expect(result.isError).toBe(true)
+      expect(result.content).toEqual([{
+        type: 'text',
+        text: `Error: plan mode blocks tool "${name}"; use observational or user-interaction tools, or exit_plan_mode`,
+      }])
+    }
+  })
+
+  it('rechecks Code Mode bindings instead of trusting the run_code transport', async () => {
+    let writeCalls = 0
+    class FakeRuntime extends CodeRuntime {
+      readonly language = 'typescript'
+      readonly isolation = 'fake'
+      async run(request: CodeRunRequest): Promise<CodeRunResult> {
+        await request.bindings[0]!.functions.write!({})
+        return { logs: [] }
+      }
+    }
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime, { mode: 'code' })
+    await ctx.plugin(FakeRuntime)
+    await ctx.plugin(PlanModeController, PLAN_CONFIG)
+    ctx.tools.register(defineContentToolFixture({
+      name: 'write',
+      effect: 'mutate',
+      description: 'test mutating tool',
+      parameters: {},
+      execute: () => {
+        writeCalls += 1
+        return Promise.resolve([{ type: 'text', text: 'ran write' }])
+      },
+    }))
+    const agent = await agentWithSession(ctx, 'code-planning', { active: true })
+
+    const result = await ctx.tools.execute({
+      callId: CallId('code-plan-call'),
+      name: RUN_CODE_NAME,
+      arguments: { code: 'await tools.write({})', description: 'Try a write' },
+      signal: new AbortController().signal,
+      agent,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.type).toBe('text')
+    expect(result.content[0]?.type === 'text' && result.content[0].text)
+      .toContain('plan mode blocks tool "write"')
+    expect(writeCalls).toBe(0)
   })
 })
 
@@ -1036,18 +1099,22 @@ describe('HMR disposal', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     const fiber = await ctx.plugin(PlanModeController, PLAN_CONFIG)
-    const agent = await agentWithSession(ctx, 'disposed-recovery')
+    registerNamedTools(ctx, ['write'], { write: 'mutate' })
+    const agent = await agentWithSession(ctx, 'disposed-recovery', { active: true })
     openTurn(agent.session)
     ctx.planMode.set(agent, true)
     expect(ctx.get('planMode')).toBeInstanceOf(PlanModeController)
     expect(ctx.tools.get(EXIT_PLAN_MODE)).toBeDefined()
     expect((await ctx.systemPrompt.assemble()).sections.map(section => section.name)).toContain('plan:policy')
+    expect((await execute(ctx, 'write', agent)).isError).toBe(true)
+    const planEventCount = agent.session.events.filter(event => event.type === 'plan/mode').length
 
     await fiber.dispose()
     expect(ctx.get('planMode')).toBeUndefined()
     expect(ctx.tools.get(EXIT_PLAN_MODE)).toBeUndefined()
     expect((await ctx.systemPrompt.assemble()).sections.map(section => section.name)).not.toContain('plan:policy')
+    expect((await execute(ctx, 'write', agent)).isError).toBe(false)
     await boundary(ctx, agent, 'step-start')
-    expect(agent.session.events.some(event => event.type === 'plan/mode')).toBe(false)
+    expect(agent.session.events.filter(event => event.type === 'plan/mode')).toHaveLength(planEventCount)
   })
 })

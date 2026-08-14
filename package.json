@@ -93,6 +93,7 @@
     "docs:check": "pnpm exec vitest run scripts/project-doc-site.spec.ts scripts/verify-doc-site-fragments.spec.ts && pnpm run docs:build",
     "website:dev": "pnpm run docs:dev",
     "website:build": "pnpm run docs:build",
+    "desktop": "pnpm --filter @deepseek-ai/dsh-desktop start",
     "verify-package-readme-limitations": "tsx scripts/verify-package-readme-limitations.ts",
     "verify-node-next-types": "tsx scripts/verify-node-next-types.ts",
     "verify-runtime-closure": "tsx scripts/verify-runtime-closure.ts",
@@ -144,6 +145,8 @@
   "devDependencies": {
     "@agentclientprotocol/sdk": "0.25.1",
     "@deepseek-ai/dsh-tool-session-query": "workspace:^",
+    "@deepseek-ai/dsh-tool-git": "workspace:^",
+    "@deepseek-ai/dsh-tool-project-memory": "workspace:^",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",

@@ -34,6 +34,14 @@ pnpm run build
 pnpm dsh web
 ```
 
+To open the same application in the native desktop shell after the build:
+
+```sh
+pnpm desktop
+```
+
+See the [desktop application guide](apps/desktop/README.md) for its runtime and packaging limits.
+
 ## Community and support
 
 - Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).

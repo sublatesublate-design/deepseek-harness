@@ -64,6 +64,7 @@ export function installReportTool(
   try {
     disposeTool = childCtx.tools.register(defineTool({
       name: 'report',
+      effect: 'interact',
       description:
         'Report selected content to the agent that started you. Call this once before you finish, with a '
         + 'self-contained final result, and earlier for progress or findings that change what that agent does '

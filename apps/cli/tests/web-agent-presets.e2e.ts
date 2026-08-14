@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { boot, healProfilesModuleFallback, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: resolves `ctx.get('sessionProjections')` and `ctx.get('tokenMeter')`.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-token-meter'
+import type { PluginInventoryEntry, PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 
 const CONFIG_DIR = fileURLToPath(new URL('../config/', import.meta.url))
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
@@ -30,6 +31,7 @@ const WEB_PATCH = join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml')
 const INSTALL_ANCHOR = join(REPO_ROOT, 'apps/cli/package.json')
 const EXAMPLES_INSTALL_ANCHOR = join(REPO_ROOT, 'examples/package.json')
 const MINIMAL_PROMPT = 'You are a helpful software engineer assistant.'
+const STANDARD_SHELL_TOOL = process.platform === 'win32' ? 'pwsh' : 'bash'
 const MINIMAL_BASH_DESCRIPTION = `Run commands in a bash shell
 * When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
 * You don't have access to the internet via this tool.
@@ -204,11 +206,13 @@ describe('the shipped Web composition', () => {
       // excluded for the reason the TUI composition e2e excludes them — they
       // depend on ripgrep being present on the machine.
       expect(toolNames(ctx, handle.agent).filter(name => name !== 'glob' && name !== 'grep')).toEqual([
-        'ask_user_question', 'bash', 'create_goal', 'edit', 'exit_plan_mode',
-        'get_goal', 'interrupt_agent', 'job_kill', 'job_list', 'job_output', 'list_agents', 'ralph', 'read', 'read_image', 'send_message', 'skill',
-        'subagent', 'subagent_fork', 'todo_write', 'update_goal', 'web_search',
+        'ask_user_question', 'create_goal', 'edit', 'exit_plan_mode',
+        'get_goal', 'git_commit', 'git_diff', 'git_stage', 'git_status', 'interrupt_agent',
+        'job_kill', 'job_list', 'job_output', 'list_agents', 'memory_archive', 'memory_read',
+        'memory_search', 'memory_write', 'ralph', 'read', 'read_image', 'send_message', 'skill',
+        'subagent', 'subagent_fork', STANDARD_SHELL_TOOL, 'todo_write', 'update_goal', 'web_search',
         'workflow', 'write',
-      ])
+      ].sort())
     } finally {
       await handle.dispose()
     }
@@ -271,7 +275,7 @@ describe('the shipped Web composition', () => {
         'cordis_define', 'cordis_run', 'cordis_stop', 'cordis_undefine',
       ]))
       // And it keeps the standard agent's own tools rather than replacing them.
-      expect(tools).toEqual(expect.arrayContaining(['bash', 'read', 'edit', 'skill']))
+      expect(tools).toEqual(expect.arrayContaining([STANDARD_SHELL_TOOL, 'read', 'edit', 'skill']))
       expect(tools).not.toContain('str_replace_editor')
 
       // The preset's own authoring skill registers into ITS layer of the host
@@ -307,7 +311,7 @@ describe('the shipped Web composition', () => {
       // The presentation is this agent's alone: the deployment default is
       // native, and the session composed from `standard` still sees it.
       const nativeAssembly = await ctx.systemPrompt.assemble({ scope: native.agent })
-      expect(nativeAssembly.tools.map(tool => tool.name)).toContain('bash')
+      expect(nativeAssembly.tools.map(tool => tool.name)).toContain(STANDARD_SHELL_TOOL)
       expect(nativeAssembly.tools.map(tool => tool.name)).not.toContain('run_code')
       expect(nativeAssembly.sections.some(section => section.name === 'tools:sdk')).toBe(false)
     } finally {
@@ -609,7 +613,7 @@ describe('a delegated child', () => {
       expect(toolNames(ctx, child.agent)).toEqual(toolNames(ctx, parent.agent))
       // The shipped `standard` preset is the whole coding agent; an empty
       // child here is the defect, and equality alone would not catch it.
-      expect(toolNames(ctx, child.agent)).toContain('bash')
+      expect(toolNames(ctx, child.agent)).toContain(STANDARD_SHELL_TOOL)
       expect(child.agent.session.header.agentPreset).toBe('standard')
     } finally {
       await child.dispose()
@@ -748,9 +752,11 @@ describe('authoring a preset on the shipped composition', () => {
     expect(preset.name).toBe('我的模式')
     expect(preset.description).toBe(source.description)
     expect(await authorCtx.agentPresets.read('my-agent')).toBe(await authorCtx.agentPresets.read('minimal'))
-    // Owner-only, in an owner-only directory: a composition is executable
-    // configuration on a machine that may have other users.
-    expect((await stat(preset.path)).mode & 0o777).toBe(0o600)
+    // POSIX stores owner-only file modes. Windows ACLs own the equivalent
+    // authority boundary, so Node's synthesized mode bits are not meaningful.
+    const presetStat = await stat(preset.path)
+    expect(presetStat.isFile()).toBe(true)
+    if (process.platform !== 'win32') expect(presetStat.mode & 0o777).toBe(0o600)
     const handle = await authorCtx.agents.create({
       sessionId: SessionId('preset-authored'),
       setup: agentCtx => authorCtx.agentPresets.mount(agentCtx, 'my-agent').then(() => undefined),
@@ -825,5 +831,54 @@ describe('a session keeps the preset it was created with', () => {
     } finally {
       await handle.dispose()
     }
+  })
+})
+
+describe('an explicitly contained optional plugin in the shipped Web composition', () => {
+  let containedCtx: Context
+  const fixturePath = join(REPO_ROOT, 'apps/cli/tests/fixtures/contained-plugin.mjs')
+  const fixtureUrl = pathToFileURL(fixturePath).href
+
+  beforeAll(async () => {
+    const fixture = await import(fixtureUrl) as {
+      reset(): void
+    }
+    fixture.reset()
+    const settingsFile = join(await mkdtemp(join(tmpdir(), 'dsh-contained-plugin-')), 'settings.yaml')
+    await writeFile(settingsFile, '{}\n')
+    containedCtx = await bootWeb(settingsFile, [{
+      insert: [{
+        id: 'contained-fixture',
+        name: '@deepseek-ai/dsh-plugin-fault-boundary/boundary',
+        config: { plugin: fixtureUrl },
+      }],
+    }])
+  }, 120_000)
+
+  afterAll(async () => {
+    await containedCtx?.fiber.dispose()
+  })
+
+  it('boots past the failure and retries the real Loader row', async () => {
+    const inventory = containedCtx.get('pluginInventory') as unknown as {
+      list(): PluginInventorySnapshot
+      retry(entryId: PluginInventoryEntry['entryId']): Promise<PluginInventoryEntry>
+    }
+    const failed = inventory.list().entries.find(entry => entry.moduleName === fixtureUrl)
+    expect(failed).toMatchObject({
+      moduleName: fixtureUrl,
+      fiberPhase: 'failed',
+      failurePolicy: 'contained',
+      diagnostic: 'real composition optional plugin failed',
+      retryable: true,
+    })
+
+    const active = await inventory.retry(failed!.entryId)
+    expect(active).toMatchObject({
+      moduleName: fixtureUrl,
+      fiberPhase: 'active',
+      failurePolicy: 'contained',
+      retryable: false,
+    })
   })
 })

@@ -2,6 +2,8 @@
  * The web app's command-line provider: it parses the `dsh --profile web` flag
  * family (`--host`, `--port`, `--trusted-host`) and its `--help`
  * text, then provides the immutable values as {@link WEB_STARTUP_SERVICE}.
+ * The native shell also supplies an invocation-only control credential through
+ * `DSH_CONTROL_TOKEN`; it is never a command-line value or printed output.
  * Ordinary rows inject that service before reading it from lazy config.
  * @module @deepseek-ai/dsh-web-app/startup
  */
@@ -27,6 +29,8 @@ export interface WebStartupValues {
   port?: number
   /** Explicit `--trusted-host` authorities, in argument order. */
   trustedHosts: string[]
+  /** Native-shell control credential, absent for ordinary browser serving. */
+  controlToken?: string
 }
 
 /** The web flag family, as commander parsed it. */
@@ -66,16 +70,21 @@ export function apply(ctx: Context): void {
   const program = webCommand()
   program.action(() => {
     const options = program.opts<WebOptions>()
+    const controlToken = process.env.DSH_CONTROL_TOKEN
     if (options.host === '0.0.0.0') {
       program.error('error: --host 0.0.0.0 is intentionally not supported yet for safety: it would expose remote code execution to the network; use 127.0.0.1 instead')
     }
     if (options.port !== undefined && !/^\d+$/.test(options.port)) {
       program.error(`error: --port must be a number, got ${JSON.stringify(options.port)}`)
     }
+    if (controlToken !== undefined && controlToken.length < 32) {
+      program.error('error: DSH_CONTROL_TOKEN must contain at least 32 characters')
+    }
     ctx.provide(WEB_STARTUP_SERVICE, {
       ...options.host !== undefined && { host: options.host },
       ...options.port !== undefined && { port: Number(options.port) },
       trustedHosts: options.trustedHost ?? [],
+      ...controlToken !== undefined ? { controlToken } : {},
     } satisfies WebStartupValues)
   })
   parseCmdline(ctx, program)

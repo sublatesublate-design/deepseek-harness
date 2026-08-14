@@ -25,6 +25,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-str-replace-editor` | `str_replace_editor` | `ctx.tools`, `ctx.fs` | `tool/call`, `fs/observed after view presence/absence, edit absence, or successful mutation`, `tool/result` | - | Standalone view/create/unique literal replace/line insert tool over the filesystem seam; it composes with any shell or terminal API. |
 | `@deepseek-ai/dsh-tool-fs` | `edit`, `read`, `read_image`, `write` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt`, `ctx.attachments (read_image registration)`, `ctx.llm + an image-capable route (read_image execution)` | `tool/call`, `fs/write-intent or fs/edit-intent for mutations`, `fs/observed after read presence/absence or successful file operation`, `durable attachment (read_image)`, `tool/result` | - | The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. `read_image` is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`, `grep` | `ctx.tools`, `ctx.subprocess`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments. |
+| `@deepseek-ai/dsh-tool-git` | `git_commit`, `git_diff`, `git_stage`, `git_status` | `ctx.tools`, `ctx.subprocess`, `ctx.systemPrompt`, `ctx.approval when git_commit executes` | `tool/call`, `Git index for git_stage`, `Git history for an approved git_commit`, `tool/result` | - | Status and diff are bounded observations; staging requires explicit paths. Every git_commit returns ask from tools/pre-execute, so it fails closed without an approval channel. The package exposes no remote mutation or history-rewrite tool. |
+| `@deepseek-ai/dsh-tool-project-memory` | `memory_archive`, `memory_read`, `memory_search`, `memory_write` | `ctx.tools`, `ctx.agents`, `ctx.fs`, `ctx.subprocess`, `ctx.systemPrompt` | `tool/call`, `fs/write-intent and .dsh-project-memory.json for memory_write or memory_archive`, `tool/result`, `one bounded startup user/message snapshot per session` | - | The first eligible session step receives ids, kinds, titles, and tags only. Entry bodies stay on disk until bounded search or exact read; writes use a version guard and archive preserves superseded history. |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`, `terminal_list`, `terminal_open`, `terminal_read`, `terminal_send`, `terminal_signal` | `ctx.tools`, `ctx.terminals`, `ctx.systemPrompt`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The six terminal tools are opt-in and complement one-shot shell/filesystem tools. `terminal_send(run_in_background: true)` registers with `ctx.jobs`; TUI, named key sequences, BEL, resize, auto-start, and cross-agent sharing are absent from the schema. |
 | `@deepseek-ai/dsh-tool-goal` | `create_goal`, `get_goal`, `update_goal` | `ctx.tools`, `ctx.agents`, `ctx.goals`, `ctx.systemPrompt`, `a calling Agent in an authorized open turn` | `tool/call`, `goal/change for mutations`, `tool/result` | - | create, edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds. |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
@@ -772,6 +774,233 @@ Search file contents with a ripgrep regular expression. Returns matching lines w
 Source: [`packages/fs/tool-fs-search/src/index.ts`](../packages/fs/tool-fs-search/src/index.ts)
 
 glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments.
+
+<a id="deepseek-aidsh-tool-git"></a>
+
+## `@deepseek-ai/dsh-tool-git`
+
+### `git_commit`
+
+Create one commit from the existing staged index after a fresh human approval. Does not stage files or contact a remote.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Non-blank commit subject and optional body."
+    }
+  },
+  "required": [
+    "message"
+  ]
+}
+```
+
+Source: [`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+### `git_diff`
+
+Read a bounded working-tree or staged diff, optionally limited to explicit paths.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "staged": {
+      "type": "boolean",
+      "description": "When true, compare the index to HEAD; otherwise read unstaged changes."
+    },
+    "paths": {
+      "type": "array",
+      "description": "Optional explicit repository-relative paths.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context_lines": {
+      "type": "number",
+      "description": "Diff context lines, from 0 through 20. Defaults to 3."
+    }
+  }
+}
+```
+
+Source: [`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+### `git_stage`
+
+Stage or unstage only the explicit repository paths supplied by the caller.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "stage | unstage",
+      "enum": [
+        "stage",
+        "unstage"
+      ]
+    },
+    "paths": {
+      "type": "array",
+      "description": "Explicit repository-relative paths; an empty list is rejected.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "action",
+    "paths"
+  ]
+}
+```
+
+Source: [`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+### `git_status`
+
+Read the repository root, branch, HEAD, and staged/unstaged/untracked paths without changing Git state.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/git/tool-git/src/index.ts`](../packages/git/tool-git/src/index.ts)
+
+Status and diff are bounded observations; staging requires explicit paths. Every git_commit returns ask from tools/pre-execute, so it fails closed without an approval channel. The package exposes no remote mutation or history-rewrite tool.
+
+<a id="deepseek-aidsh-tool-project-memory"></a>
+
+## `@deepseek-ai/dsh-tool-project-memory`
+
+### `memory_archive`
+
+Archive one obsolete or superseded project-memory entry without deleting its audit history.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Exact active entry id."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+### `memory_read`
+
+Read one exact project-memory entry by id after search or startup-index discovery.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Eight-character id from memory_search or the startup index."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+### `memory_search`
+
+Search active project memory by title, tags, and content; returns bounded metadata and snippets, not full entries.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Non-blank terms describing the decision, convention, fact, or pitfall to recall."
+    },
+    "limit": {
+      "type": "number",
+      "description": "Maximum hits, from 1 through 8. Defaults to 8."
+    },
+    "include_archived": {
+      "type": "boolean",
+      "description": "Include archived entries when investigating superseded history."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+Source: [`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+### `memory_write`
+
+Create a concise durable project-memory entry, or replace one exact existing entry while preserving its identity.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Existing id to replace. Omit to create a new entry."
+    },
+    "kind": {
+      "type": "string",
+      "description": "decision | convention | fact | pitfall",
+      "enum": [
+        "decision",
+        "convention",
+        "fact",
+        "pitfall"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Concise unique title, at most 160 characters."
+    },
+    "content": {
+      "type": "string",
+      "description": "Durable fact and why it matters, at most 4000 characters."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Up to 16 short retrieval labels.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "title",
+    "content"
+  ]
+}
+```
+
+Source: [`packages/context/tool-project-memory/src/index.ts`](../packages/context/tool-project-memory/src/index.ts)
+
+The first eligible session step receives ids, kinds, titles, and tags only. Entry bodies stay on disk until bounded search or exact read; writes use a version guard and archive preserves superseded history.
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 

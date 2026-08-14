@@ -301,6 +301,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'job_output',
+    effect: 'observe',
     description: 'Read a background job. Stream jobs return only output since the previous read; '
       + 'final-output jobs return their result after settlement. Every response ends with '
       + '`[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap.',
@@ -341,6 +342,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'job_list',
+    effect: 'observe',
     description: 'List your background jobs (running and finished) with their ids, kinds, and statuses.',
     parameters: {},
     output: {

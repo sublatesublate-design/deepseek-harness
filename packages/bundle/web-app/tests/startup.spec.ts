@@ -22,11 +22,14 @@ interface Observed {
 }
 
 const disposers: (() => Promise<void>)[] = []
+const originalControlToken = process.env.DSH_CONTROL_TOKEN
 
 afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
   internals.stdout = process.stdout
   internals.stderr = process.stderr
+  if (originalControlToken === undefined) delete process.env.DSH_CONTROL_TOKEN
+  else process.env.DSH_CONTROL_TOKEN = originalControlToken
 })
 
 /**
@@ -110,6 +113,25 @@ describe('web command-line provider', () => {
       port: 3080,
       trustedHosts: [],
     })
+  })
+
+  it('forwards the native control credential without adding a command-line flag', async () => {
+    process.env.DSH_CONTROL_TOKEN = 'desktop-control-token-with-at-least-32-characters'
+    const { values, observed } = await bootProvider([])
+    expect(values).toEqual({
+      trustedHosts: [],
+      controlToken: 'desktop-control-token-with-at-least-32-characters',
+    })
+    expect(observed.out).not.toContain(process.env.DSH_CONTROL_TOKEN)
+  })
+
+  it('rejects a short native control credential without printing it', async () => {
+    process.env.DSH_CONTROL_TOKEN = 'too-short'
+    const { values, observed } = await bootProvider([])
+    expect(values).toBeUndefined()
+    expect(observed.out).toContain('DSH_CONTROL_TOKEN must contain at least 32 characters')
+    expect(observed.out).not.toContain('too-short')
+    expect(observed.exits).toEqual([1])
   })
 
   it('prints its own help and leaves the consumer pending', async () => {

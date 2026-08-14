@@ -77,6 +77,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   messageFeedback: 'feedback.md',
   permissionPresets: 'permission-presets.md',
   planMode: 'plan.md',
+  pluginFaults: 'extensions.md',
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
@@ -565,6 +566,8 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WebUpgradeRoute:
     'upgrade route registration contract is owned by packages/host/webserver/src/index.ts',
   InvariantRegistration: 'service-local lifecycle handle is owned by packages/runtime-diagnostics/invariants/README.md',
+  ContainedPluginRecord: 'plugin fault record is owned by packages/boot/plugin-fault-boundary/README.md',
+  BoundaryController: 'boundary-local lifecycle controller is owned by packages/boot/plugin-fault-boundary/src/types.ts',
   JsonValue: 'JSON value union is owned by packages/core/session/src/json.ts',
   KnobState: 'projection unit state fields are owned by packages/interaction/permission-presets/README.md',
   PermissionSelect: 'permissions projection payload is owned by packages/interaction/permission-presets/src/types.ts',

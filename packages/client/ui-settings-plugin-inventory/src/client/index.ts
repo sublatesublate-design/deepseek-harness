@@ -1,4 +1,4 @@
-/** Read-only Host plugin inventory registered into Web Settings. */
+/** Host plugin inventory and contained-failure recovery registered into Web Settings. */
 
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -11,7 +11,7 @@ export type { PluginInventoryLocaleKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Read-only Host plugin inventory copy. */
+    /** Host plugin inventory and contained-failure recovery copy. */
     'settings.pluginInventory': PluginInventoryLocaleKey
   }
 }
@@ -34,7 +34,14 @@ export function apply(ctx: ClientContext): void {
     }
     return result.value
   }
-  const injected = (): PluginInventorySettingsTabInjected => ({ list })
+  const retry: PluginInventorySettingsTabInjected['retry'] = async (entryId) => {
+    const result = await ctx.remote.pluginInventory.retry(entryId)
+    if (!result.ok) {
+      throw new Error(`pluginInventory.retry failed: ${result.error.code}: ${result.error.message}`)
+    }
+    return result.value
+  }
+  const injected = (): PluginInventorySettingsTabInjected => ({ list, retry })
 
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
     name: 'settings.plugins.tab',

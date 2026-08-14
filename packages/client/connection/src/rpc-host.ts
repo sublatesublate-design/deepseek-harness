@@ -12,6 +12,7 @@ import {
   type ServerResponse as RpcServerResponse,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { bridge, type FetchHandler } from './http-bridge.ts'
+import { isAuthorizedApiRequest } from './api-request-auth.ts'
 import { isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type {
@@ -47,8 +48,13 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Provide the Host half over the active HTTP server.
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by trusted-host channels.
+   * @param controlToken - optional per-process credential shared by every channel.
    */
-  constructor(ctx: Context, private readonly trustedHosts: readonly string[]) {
+  constructor(
+    ctx: Context,
+    private readonly trustedHosts: readonly string[],
+    private readonly controlToken?: string,
+  ) {
     super(ctx, 'connection')
   }
 
@@ -103,6 +109,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
         if (!isTrustedApiRequest(req, trustedHosts)) {
           res.writeHead(403)
           res.end('forbidden')
+          return
+        }
+        if (!isAuthorizedApiRequest(req, this.controlToken)) {
+          res.writeHead(401)
+          res.end('unauthorized')
           return
         }
         await bridge(req, res, fetchHandler)

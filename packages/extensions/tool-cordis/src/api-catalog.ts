@@ -964,6 +964,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'pluginFaults',
+    summary: 'Registry consumed by boundary rows and trusted diagnostics surfaces.',
+    description: 'Registry consumed by boundary rows and trusted diagnostics surfaces.',
+    methods: [
+      {
+        signature: 'list(): readonly ContainedPluginRecord[]',
+        description: 'Return all live contained entries in registration order.',
+        parameters: [],
+        returns: 'Immutable snapshots of the live registrations.',
+      },
+      {
+        signature: 'get(entryId: string): ContainedPluginRecord | undefined',
+        description: 'Return one live contained entry.',
+        parameters: [{ name: 'entryId', description: 'owning Loader row id.' }],
+        returns: 'the current snapshot, or undefined when no boundary owns the id.',
+      },
+      {
+        signature: 'async retry(entryId: string): Promise<ContainedPluginRecord>',
+        description: 'Retry one failed contained entry.',
+        parameters: [{ name: 'entryId', description: 'owning Loader row id.' }],
+        returns: 'the target\'s settled status after the retry attempt.',
+      },
+      {
+        signature: 'attach(entryId: string, controller: BoundaryController): () => void',
+        description: 'Register the controller owned by one boundary row.',
+        parameters: [{ name: 'entryId', description: 'owning Loader row id.' }, { name: 'controller', description: 'lifecycle controller created by the boundary wrapper.' }],
+        returns: 'disposer that removes this exact registration.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -2830,6 +2861,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ConfinedSandboxMode = Exclude<SandboxMode, \'danger-full-access\'>;',
   },
   {
+    name: 'ContainedPluginPhase',
+    declaration: 'export type ContainedPluginPhase = \'pending\' | \'loading\' | \'active\' | \'failed\' | \'unloading\';',
+  },
+  {
+    name: 'ContainedPluginRecord',
+    declaration: 'export interface ContainedPluginRecord {\n    readonly entryId: string;\n    readonly moduleName: string;\n    readonly phase: ContainedPluginPhase;\n    readonly diagnostic?: string;\n    readonly retryable: boolean;\n}',
+  },
+  {
     name: 'ContentBlockMap',
     declaration: 'export interface ContentBlockMap {\n    \'text\': TextBlock;\n    \'reasoning\': ReasoningBlock;\n    \'image\': ImageBlock;\n    \'tool-call\': ToolCallBlock;\n    \'tool-result\': ToolResultBlock;\n}',
   },
@@ -4351,11 +4390,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolDefinition',
-    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
+    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    readonly effect?: ToolEffect;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
   },
   {
     name: 'ToolDispatchExecution',
     declaration: 'export interface ToolDispatchExecution extends Omit<ToolExecution, \'signal\'> {\n    signal: AbortSignal;\n}',
+  },
+  {
+    name: 'ToolEffect',
+    declaration: 'export type ToolEffect = \'observe\' | \'interact\' | \'mutate\' | \'orchestrate\';',
   },
   {
     name: 'ToolErrorInfo',

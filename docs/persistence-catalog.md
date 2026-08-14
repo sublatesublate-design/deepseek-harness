@@ -145,7 +145,10 @@ Source: [`packages/preset/agent-presets/src/session.ts:26`](../packages/preset/a
 /**
  * An approval question was put to the answerer chain — log-only audit
  * (like `hook/*`; NOT a surface event, carries no `surfaceOp`). `id` pairs
- * it with the `approval/decided` that always follows; `toolName` is the
+ * it with the `approval/decided` that follows a normally settled request.
+ * Crash repair may instead close the owning turn as `interrupted`; that
+ * expires the unanswered question without inventing a human decision.
+ * `toolName` is the
  * tool the question is about, `callId` the exact tool call when the asker
  * had one, `reason` the asker's human-readable explanation (e.g. a hook's
  * permission-decision reason).
@@ -160,7 +163,7 @@ Source: [`packages/preset/agent-presets/src/session.ts:26`](../packages/preset/a
 
 Types: [CallId](subsystems/core.md)
 
-Source: [`packages/interaction/user-approval/src/index.ts:44`](../packages/interaction/user-approval/src/index.ts)
+Source: [`packages/interaction/user-approval/src/index.ts:47`](../packages/interaction/user-approval/src/index.ts)
 
 <a id="approvaldecided--log-only"></a>
 
@@ -169,8 +172,8 @@ Source: [`packages/interaction/user-approval/src/index.ts:44`](../packages/inter
 ```ts persistence-catalog
 /**
  * The outcome of a prior `approval/asked` (same `id`) — log-only audit.
- * Exactly one per ask, appended when the outcome is known: a decision, a
- * cancellation, or the fail-closed `'unavailable'`.
+ * Exactly one per normally settled ask, appended when the outcome is
+ * known: a decision, cancellation, or fail-closed `'unavailable'`.
  */
 'approval/decided': {
   id: ApprovalRequestId
@@ -178,7 +181,7 @@ Source: [`packages/interaction/user-approval/src/index.ts:44`](../packages/inter
 }
 ```
 
-Source: [`packages/interaction/user-approval/src/index.ts:55`](../packages/interaction/user-approval/src/index.ts)
+Source: [`packages/interaction/user-approval/src/index.ts:58`](../packages/interaction/user-approval/src/index.ts)
 
 <a id="approvalpolicy--log-only"></a>
 
@@ -200,7 +203,7 @@ Source: [`packages/interaction/user-approval/src/index.ts:55`](../packages/inter
 }
 ```
 
-Source: [`packages/interaction/user-approval/src/index.ts:67`](../packages/interaction/user-approval/src/index.ts)
+Source: [`packages/interaction/user-approval/src/index.ts:70`](../packages/interaction/user-approval/src/index.ts)
 
 ### `assistant/*`
 

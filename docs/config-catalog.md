@@ -405,12 +405,14 @@ export interface ConnectionConfig {
    * that is not a bare, canonical authority fails the plugin load.
    */
   trustedHosts?: string[]
+  /** Optional per-process credential required by every HTTP and WebSocket API request. */
+  controlToken?: string
   /** Maximum buffered JSON body for every `/api` request. */
   maxRequestBodyBytes?: number
 }
 ```
 
-Source: [`packages/client/connection/src/index.ts:50`](../packages/client/connection/src/index.ts)
+Source: [`packages/client/connection/src/index.ts:52`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -2429,6 +2431,24 @@ export interface Config {
 
 Source: [`packages/fs/tool-fs-search/src/index.ts:73`](../packages/fs/tool-fs-search/src/index.ts)
 
+<a id="deepseek-aidsh-tool-git"></a>
+
+## `@deepseek-ai/dsh-tool-git`
+
+Requires: `tools` · `systemPrompt` · `subprocess`
+
+```ts config-catalog
+/** Deployment-owned output and process bounds. */
+export interface Config {
+  /** Maximum bytes collected independently from stdout and stderr. */
+  maxOutputBytes?: number
+  /** Grace between cooperative and forced process-tree termination. */
+  graceMs?: number
+}
+```
+
+Source: [`packages/git/tool-git/src/index.ts:23`](../packages/git/tool-git/src/index.ts)
+
 <a id="deepseek-aidsh-tool-goal"></a>
 
 ## `@deepseek-ai/dsh-tool-goal`
@@ -2498,6 +2518,34 @@ export interface Config {
 ```
 
 Source: [`packages/lsp/tool-lsp/src/index.ts:58`](../packages/lsp/tool-lsp/src/index.ts)
+
+<a id="deepseek-aidsh-tool-project-memory"></a>
+
+## `@deepseek-ai/dsh-tool-project-memory`
+
+Requires: `agents` · `fs` · `subprocess` · `tools` · `systemPrompt`
+
+```ts config-catalog
+/** Deployment-owned memory caps. */
+export interface Config {
+  /** Maximum number of active and archived entries stored together. */
+  maxEntries?: number
+  /** Maximum UTF-16 character count of one entry body. */
+  maxEntryChars?: number
+  /** Maximum UTF-8 byte size of the serialized JSON store. */
+  maxStoreBytes?: number
+  /** Maximum number of active metadata rows considered for startup injection. */
+  maxIndexEntries?: number
+  /** Maximum UTF-8 byte size of the startup metadata snapshot. */
+  maxIndexBytes?: number
+  /** Maximum number of hits returned by one memory search. */
+  maxSearchResults?: number
+  /** Maximum UTF-8 byte size of one serialized search result. */
+  maxSearchBytes?: number
+}
+```
+
+Source: [`packages/context/tool-project-memory/src/index.ts:58`](../packages/context/tool-project-memory/src/index.ts)
 
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
@@ -2794,7 +2842,7 @@ export interface Config {
 export type ToolPresentationMode = 'native' | 'code' | 'both'
 ```
 
-Source: [`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:665`](../packages/core/tools/src/index.ts)
 
 <a id="deepseek-aidsh-typert-loader"></a>
 
@@ -2841,7 +2889,7 @@ export interface Config {
 export type ApprovalPolicy = 'ask' | 'never'
 ```
 
-Source: [`packages/interaction/user-approval/src/index.ts:177`](../packages/interaction/user-approval/src/index.ts)
+Source: [`packages/interaction/user-approval/src/index.ts:180`](../packages/interaction/user-approval/src/index.ts)
 
 <a id="deepseek-aidsh-web"></a>
 
@@ -2884,6 +2932,8 @@ export interface Config {
   surfaceContext: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
+  /** Optional native-shell credential forwarded to the Host connection layer. */
+  controlToken?: string
 }
 ```
 
@@ -3073,6 +3123,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
+- `@deepseek-ai/dsh-plugin-fault-boundary` ([`packages/boot/plugin-fault-boundary/src/index.ts`](../packages/boot/plugin-fault-boundary/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — requires `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
 - `@deepseek-ai/dsh-session` ([`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts))
 - `@deepseek-ai/dsh-session-checkpoint-policy` — requires `llm` · `sessionPersistence` · `sessions` · `tools` ([`packages/session/session-checkpoint-policy/src/index.ts`](../packages/session/session-checkpoint-policy/src/index.ts))

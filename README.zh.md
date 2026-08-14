@@ -34,6 +34,14 @@ pnpm run build
 pnpm dsh web
 ```
 
+构建完成后，可在原生桌面外壳中打开同一个应用：
+
+```sh
+pnpm desktop
+```
+
+运行方式与打包限制参见[桌面应用指南](apps/desktop/README.md)。
+
 ## 社区与支持
 
 - 欢迎通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。

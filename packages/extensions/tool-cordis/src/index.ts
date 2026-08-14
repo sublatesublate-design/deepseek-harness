@@ -40,6 +40,7 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'cordis_inspect_list',
+    effect: 'observe',
     description:
       'List every Cordis Inspect Provider currently known to the Host, including local Host Providers and the latest '
       + 'manifests synchronized from the Client. Each entry includes its platform, purpose, read-only methods, and '
@@ -59,6 +60,7 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'cordis_inspect_query',
+    effect: 'observe',
     description:
       'Run a read-only query explicitly declared by an Inspect Provider. platform, provider, and method must come '
       + 'from cordis_inspect_list, and input must satisfy that method\'s schema. Use this Tool before cordis_define '
@@ -95,6 +97,7 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'cordis_inspect_self',
+    effect: 'observe',
     description:
       'Inspect dynamic Cordis objects owned by the current Session at increasing levels of detail. With no IDs, '
       + 'list only Plugin summaries. With pluginId alone, return version pointers, the latest Run, and every Package '

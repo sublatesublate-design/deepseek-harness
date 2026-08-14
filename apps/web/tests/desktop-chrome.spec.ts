@@ -23,14 +23,14 @@ describe('desktop chrome', () => {
     expect(document.body.dataset.dshDesktop).toBe('true')
     expect(document.body.dataset.dshDesktopPlatform).toBe('win32')
     expect(document.querySelectorAll('[data-dsh-desktop-titlebar]')).toHaveLength(1)
-    expect(document.querySelector('.dsh-desktop-brand')?.textContent).toContain('DeepSeek Harness')
+    expect(document.querySelector('.dsh-desktop-brand')?.textContent).toContain('DeepSeek Desktop')
     expect(document.querySelector('[data-dsh-desktop-titlebar]')?.outerHTML).toMatchInlineSnapshot(`
       "<header class="dsh-desktop-titlebar" data-dsh-desktop-titlebar="true" aria-label="Application title bar">
           <div class="dsh-desktop-brand">
             <img src="/favicon.svg" alt="" width="17" height="17">
-            <span>DeepSeek Harness</span>
+            <span>DeepSeek Desktop</span>
           </div>
-          <span class="dsh-desktop-edition">Desktop</span>
+          <span class="dsh-desktop-edition">Developer Preview</span>
         </header>"
     `)
   })

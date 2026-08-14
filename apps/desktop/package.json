@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "description": "Native desktop window for the DeepSeek Harness web application",
+  "description": "Windows and macOS desktop application for DeepSeek Harness",
   "version": "0.1.0-rc.5",
   "publishConfig": {
     "access": "public"
@@ -13,7 +13,10 @@
   "type": "module",
   "main": "lib/main.js",
   "scripts": {
-    "start": "electron ."
+    "build": "tsdown",
+    "launch": "electron .",
+    "start": "pnpm --workspace-root run desktop",
+    "test:built": "node tests/desktop-smoke.mjs"
   },
   "license": "MIT",
   "dependencies": {

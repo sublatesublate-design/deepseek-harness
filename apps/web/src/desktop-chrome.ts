@@ -23,9 +23,9 @@ export function mountDesktopChrome(search = window.location.search): void {
   titlebar.innerHTML = `
     <div class="dsh-desktop-brand">
       <img src="/favicon.svg" alt="" width="17" height="17">
-      <span>DeepSeek Harness</span>
+      <span>DeepSeek Desktop</span>
     </div>
-    <span class="dsh-desktop-edition">Desktop</span>
+    <span class="dsh-desktop-edition">Developer Preview</span>
   `
   document.body.prepend(titlebar)
 }

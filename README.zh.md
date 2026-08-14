@@ -1,82 +1,76 @@
-# DeepSeek Harness
+# DeepSeek Desktop
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的社区 fork，面向希望在 Windows 与 macOS 上通过原生桌面窗口使用 coding agent（编程智能体）的开发者。它保留上游由 [Cordis](https://github.com/cordiverse/cordis) 驱动的“一切皆插件”架构，并在此基础上补充桌面运行、工程工作流、受限项目记忆与故障恢复能力。
 
-它采用**一切皆插件**的架构，并由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper)。
+本项目不是 DeepSeek AI 的官方桌面产品。当前功能位于 `deepseek-desktop` 分支，仍处于开发者预览阶段，可能发生破坏兼容性的变更。
 
-## 开发者预览
+## 本分支提供的功能
 
-DeepSeek Harness 目前处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+### 原生桌面应用
+
+- Electron 外壳复用 Harness 的 Web UI、会话、模型设置、工具和工作区，不维护第二套客户端。
+- 桌面端在 `127.0.0.1:3081` 启动托管服务，并为每个进程生成 256 位随机控制凭据。HTTP、RPC 与 WebSocket 请求必须通过认证；凭据不会进入 URL、页面启动数据或日志。
+- 服务启动失败时，窗口会显示错误原因、长度受限的最近日志、完整日志位置和重试操作，不再只留下终端报错或空白窗口。
+- 源码启动器包含 Windows 与 macOS 窗口行为、单实例聚焦、尺寸记忆、系统菜单、平台标题栏和应用图标。
+
+### coding agent 工程工作流
+
+- 新增 `git_status`、`git_diff`、`git_stage` 和 `git_commit`。暂存只能使用明确路径，提交只能使用已有暂存区，并且每次提交都要求新的人工审批。
+- 新增有界项目记忆。正文保存在仓库根目录的 `.dsh-project-memory.json`，启动时只注入小型索引；agent 必须搜索并明确读取相关条目，避免持久化记忆持续占满上下文。
+- 工具定义可声明 `observe`、`interact`、`mutate` 或 `orchestrate` 效果等级，供宿主执行权限与恢复策略使用，不把调度元数据泄漏给模型。
+
+### 插件容错与信任说明
+
+- 可选插件可以在独立的 Cordis 子 fiber 中激活。导入或激活失败会被隔离并记录，其他插件可以继续启动；插件清单会展示诊断并允许重试。
+- 插件仍是与 Harness 同进程运行的受信任本机代码，可以访问该进程拥有的文件系统、网络、环境变量和进程权限。子 fiber 只隔离受支持的生命周期故障，**不是安全沙箱**。
+
+### 崩溃恢复与审批
+
+- assistant 已请求工具但没有持久化 `tool/call` 时，恢复记录为 `TOOL_NOT_STARTED`，可以按需重新执行。
+- 已持久化调用但没有工具结果时，恢复记录为 `TOOL_OUTCOME_UNKNOWN`；系统不会盲目重试可能已经产生副作用的操作。
+- 崩溃时尚未回答的审批只会随 interrupted 轮次失效，不会被重放、推定为允许或伪造成人工作出的决定。
+
+## 当前限制
+
+- 当前只提供从源码启动的开发者预览，不生成 Windows 或 macOS 安装包，也未提供代码签名、自动更新和发布渠道。
+- Windows 路径已进行本机验证；macOS 启动与窗口分支已实现，但仍需在真实 Mac 硬件上完成运行与打包验收。
+- 插件进程隔离、能力授权协议和资源配额尚未实现，因此只能安装并启用你信任的插件。
+- 内置 Git 工具不提供 push、force-push、reset、rebase、checkout、远端配置或删除分支；这些高影响操作仍需通过另行授权的 Shell 工作流完成。
 
 ## 运行
 
-### 通过 `npm` 运行
-
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-该命令会启动 Web UI，默认地址为 `http://127.0.0.1:3080`。详见 [Web UI 指南](docs/user/guide/index.md)。
-
 ### 从源码运行
 
-如需从仓库源码运行：
+需要 Node.js 22.19 或更高兼容版本、pnpm 和 Git：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
+git clone --branch deepseek-desktop https://github.com/sublatesublate-design/deepseek-harness.git
 cd deepseek-harness
 pnpm install
 pnpm run build
-pnpm dsh web
-```
-
-构建完成后，可在原生桌面外壳中打开同一个应用：
-
-```sh
 pnpm desktop
 ```
 
-运行方式与打包限制参见[桌面应用指南](apps/desktop/README.md)。
+桌面应用默认使用 `http://127.0.0.1:3081`。如果只需要浏览器界面，可以运行：
 
-## 社区与支持
+```sh
+pnpm dsh web
+```
 
-- 欢迎通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
+浏览器界面默认使用 `http://127.0.0.1:3080`。
 
-<table>
-  <thead>
-    <tr>
-      <th align="center">企微小助手</th>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="assets/community-wecom-assistant.png" alt="DeepSeek Harness 企微小助手二维码" width="180" height="180"></td>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="assets/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="assets/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
+## 详细文档
 
-## 参与贡献
+- [桌面应用：运行方式、安全设计与平台限制](apps/desktop/README.md)
+- [Git 工作流工具](packages/git/tool-git/README.md)
+- [有界项目记忆](packages/context/tool-project-memory/README.md)
+- [插件激活故障隔离](packages/boot/plugin-fault-boundary/README.md)
+- [审批与崩溃恢复语义](packages/interaction/user-approval/README.md)
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+## 上游、开发与许可证
 
-## 开发
+上游项目及原始设计归 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 维护。贡献代码前请阅读[开发指南](docs/development.md)、[架构文档](docs/architecture.md)和 [AGENTS.md](AGENTS.md)。
 
-请先阅读[开发指南](docs/development.md)与[架构文档](docs/architecture.md)。
-
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
-
-## 许可证
-
-[MIT](LICENSE)
-
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本 fork 保留上游的 [MIT 许可证](LICENSE)。第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

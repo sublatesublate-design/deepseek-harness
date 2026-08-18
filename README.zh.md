@@ -6,6 +6,12 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 本项目不是 DeepSeek AI 的官方桌面产品。当前功能位于 `deepseek-desktop` 分支，仍处于开发者预览阶段，可能发生破坏兼容性的变更。
 
+## 为什么使用这个 Desktop fork？
+
+- **原生桌面工作环境：** Harness 在 Windows 或 macOS 的独立窗口中运行，同时保留 Web 界面、会话、模型、工具和插件架构。
+- **实时蓝鲸桌宠：** DeepSeek 蓝鲸会同步显示思考、工具调用、审批和错误，并在透明独立窗口中跟随当前会话更新。
+- **适合长期项目：** 窗口状态记忆、本地服务管理、故障恢复和多工作区支持，让 AI 编程环境可以持续运行整个项目周期。
+
 ## 本分支提供的功能
 
 ### 原生桌面应用
@@ -38,6 +44,22 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 - Windows 路径已进行本机验证；macOS 启动与窗口分支已实现，但仍需在真实 Mac 硬件上完成运行与打包验收。
 - 插件进程隔离、能力授权协议和资源配额尚未实现，因此只能安装并启用你信任的插件。
 - 内置 Git 工具不提供 push、force-push、reset、rebase、checkout、远端配置或删除分支；这些高影响操作仍需通过另行授权的 Shell 工作流完成。
+
+## 下载与安装
+
+想同时体验 Desktop 和蓝鲸桌宠，最简单的方式是使用这个 Fork 的 `deepseek-desktop` 分支。你需要安装 Git、pnpm 和 Node.js 22.19 或更高版本。
+
+```sh
+git clone --branch deepseek-desktop https://github.com/sublatesublate-design/deepseek-harness.git
+cd deepseek-harness
+pnpm install
+pnpm run build
+pnpm desktop
+```
+
+Desktop 会在 `http://127.0.0.1:3081` 启动本地服务。如果只需要浏览器模式，可以运行 `pnpm dsh web`，地址是 `http://127.0.0.1:3080`。
+
+这个 Desktop 分支已经内置蓝鲸插件。如果只想下载插件源码，请访问独立社区仓库 [deepseek-whale-pet](https://github.com/sublatesublate-design/deepseek-whale-pet)。它需要复制到 DSH workspace 中使用，不是可以单独运行的应用，也不是一键安装的 npm 包。
 
 ## 运行
 

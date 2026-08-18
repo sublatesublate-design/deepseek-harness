@@ -6,6 +6,12 @@ DeepSeek Desktop is a community fork of [DeepSeek Harness](https://github.com/de
 
 This project is not an official DeepSeek AI desktop product. The current features live on the `deepseek-desktop` branch and remain a developer preview with no compatibility guarantee.
 
+## Why use this Desktop fork?
+
+- **A native desktop workspace:** Harness runs in its own Windows or macOS window while keeping its Web UI, sessions, models, tools, and plugin architecture.
+- **A live whale companion:** The DeepSeek whale mirrors thinking, tool calls, approvals, and errors in a transparent companion window that stays synchronized with the active session.
+- **Built for long-running projects:** Saved window state, local service management, recovery controls, and multiple workspace support make it easier to keep an AI coding environment open throughout a project.
+
 ## Features in this branch
 
 ### Native desktop application
@@ -38,6 +44,22 @@ This project is not an official DeepSeek AI desktop product. The current feature
 - The Windows path has been exercised locally. The macOS launcher and window paths are implemented but still require runtime and packaging acceptance on real Mac hardware.
 - Plugin process isolation, capability grants, and resource quotas are not implemented, so install and enable only plugins you trust.
 - The built-in Git tools do not provide push, force-push, reset, rebase, checkout, remote configuration, or branch deletion; those high-impact operations still require a separately authorized Shell workflow.
+
+## Download and install
+
+The fastest way to try the Desktop and whale companion together is to use this Fork's `deepseek-desktop` branch. You need Git, pnpm, and Node.js 22.19 or later.
+
+```sh
+git clone --branch deepseek-desktop https://github.com/sublatesublate-design/deepseek-harness.git
+cd deepseek-harness
+pnpm install
+pnpm run build
+pnpm desktop
+```
+
+The Desktop window starts its local service on `http://127.0.0.1:3081`. The browser-only mode is available with `pnpm dsh web` and uses `http://127.0.0.1:3080`.
+
+The whale plugin is already included in this Desktop branch. If you only want the plugin source, download the independent community repository at [deepseek-whale-pet](https://github.com/sublatesublate-design/deepseek-whale-pet). It is designed to be copied into a DSH workspace and is not a standalone application or one-click npm package.
 
 ## Run
 

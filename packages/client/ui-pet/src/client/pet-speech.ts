@@ -2,6 +2,7 @@ import type { ConversationSnapshot, SessionSummary } from '@deepseek-ai/dsh-clie
 import type { PetActivity } from './pet-model.ts'
 import type { PetKey } from './locales.ts'
 
+/** Localized speech selection and its optional bounded live-text fallback. */
 export interface ResolvedSpeech {
   key: PetKey
   params?: Record<string, unknown> | undefined

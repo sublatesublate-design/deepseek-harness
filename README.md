@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-DeepSeek Desktop is a community fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) for developers who want to use a coding agent in a native desktop window on Windows and macOS. It retains the upstream “everything is a plugin” architecture powered by [Cordis](https://github.com/cordiverse/cordis), while adding desktop operation, engineering workflows, bounded project memory, and failure recovery.
+DeepSeek Desktop is a community fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) for developers who want to use a coding agent in a native desktop window on Windows and macOS. It retains the upstream “everything is a plugin” architecture powered by [Cordis](https://github.com/cordiverse/cordis), while adding desktop operation, engineering workflows, bounded project memory, failure recovery, and local security protections.
 
 This project is not an official DeepSeek AI desktop product. The current features live on the `deepseek-desktop` branch and remain a developer preview with no compatibility guarantee.
 
@@ -16,10 +16,21 @@ The original Harness experience is browser-first. I wanted a version that is eas
 - **Coding-agent engineering workflow:** `git_status`, `git_diff`, `git_stage`, and `git_commit` require explicit paths and fresh human approval. Bounded project memory keeps only a small index in startup context and requires the agent to search and read relevant entries. Tool effect levels (`observe`, `interact`, `mutate`, and `orchestrate`) give the host a clear permission and recovery policy.
 - **Plugin fault containment:** Optional plugins run in a dedicated Cordis child Fiber. Import or activation failures are recorded and isolated so sibling plugins can continue; the inventory exposes diagnostics and retry. Plugins remain trusted local code, not a security sandbox.
 - **Crash recovery and approval safety:** Missing durable tool calls recover as `TOOL_NOT_STARTED`; calls without results recover as `TOOL_OUTCOME_UNKNOWN` instead of blindly repeating a possibly side-effecting operation. An unanswered approval expires only with an interrupted turn and is never replayed or inferred as granted.
-- **Local security boundaries:** Switching `/permission` to a no-approval preset requires confirmation. `/api` rejects proven non-loopback peers on a `0.0.0.0` bind, and a wildcard bind requires explicit `allowNonLoopback`. Dynamic plugins cannot escape through `exec.agent.ctx`, and one session cannot settle another session's run approval. User patches inside the workspace cannot use `!!js`. `dsh plugin` refuses automatic activation without a TTY. `git commit`, `git push`, and `git reset --hard` go through approval; subprocess confinement is per-call and fails closed when the sandbox service is missing.
+- **Eleven local security fixes:** These protections are independent. They cover permission, network, plugins, sessions, configuration, Git, subprocesses, paths, and model output.
+  - Switching `/permission` to a preset whose approval is `never` requires confirmation; the switch is refused when the question service is missing or the answer is not Yes.
+  - `/api` rejects a proven non-loopback peer when bound to `0.0.0.0`; a wildcard bind requires explicit `allowNonLoopback`.
+  - Dynamic plugins cannot read an unguarded host Context through `exec.agent.ctx`.
+  - One session cannot settle another session's plugin-run approval.
+  - User patches under the workspace or the platform temp directory cannot use `!!js`; trusted home and profile patches may still interpolate environment variables.
+  - `dsh plugin` activates a newly installed bundle only after an explicit TTY yes; a non-TTY install names the bundles and leaves them inactive.
+  - `git commit`, `git push`, and `git reset --hard` require human approval.
+  - Subprocess confinement is per-call and fail-closed when a confined spawn has no sandbox service.
+  - Model-visible tool paths use POSIX separators so Windows backslashes do not enter the context.
+  - `str_replace_editor` first matches the original text so mixed-EOL files stay unique, then restores the majority line ending of the first 4 KiB.
+  - A tool-call `id` or `name` of `null` is treated as absent and does not overwrite an already accumulated name.
 - **Live whale companion:** A transparent Desktop window follows the active session and reflects thinking, tool calls, approvals, errors, and completed answers. High-frequency reasoning is reduced to a stable thinking state, while tool targets and answer tails remain bounded summaries.
 
-The purpose is not to add a decorative pet to a browser page. It is to make Harness a desktop AI coding environment that can stay open for a project, recover clearly from failures, and keep high-impact actions visible to the human operator.
+The purpose is not to add a decorative pet to a browser page. It is to make Harness a desktop AI coding environment that can stay open for a project, refuse to continue when a local protection cannot hold, recover clearly from failures, and keep high-impact actions visible to the human operator.
 
 ## Features in this branch
 
@@ -46,6 +57,20 @@ The purpose is not to add a decorative pet to a browser page. It is to make Harn
 - When the assistant requested a tool but no durable `tool/call` exists, recovery records `TOOL_NOT_STARTED`, allowing execution when still needed.
 - When a durable call exists without a tool result, recovery records `TOOL_OUTCOME_UNKNOWN`; the system does not blindly retry an operation that may already have produced side effects.
 - An unanswered approval at crash time expires only with an interrupted turn. It is never replayed, inferred as granted, or fabricated as a human decision.
+
+### Local security fixes
+
+- Switching `/permission` to a preset whose approval is `never` asks the user first. The switch is refused when the question service is missing or the answer is not Yes.
+- `/api` HTTP and WebSocket handlers reject a proven non-loopback peer when bound to `0.0.0.0`. A missing peer address is not treated as remote; a wildcard bind also requires `allowNonLoopback: true`.
+- A dynamic plugin `execute` sees only a read-only façade. Reading `exec.ctx` or `exec.agent.ctx` throws and cannot bypass the host guard.
+- A plugin-run approval must belong to the current agent. One session cannot settle another session's unanswered run request.
+- User patches under the task workspace or the platform temp directory parse without `!!js`. Home and profile patches outside those roots may still interpolate environment variables; `--patch` overlays stay trusted.
+- `dsh plugin` activates a newly installed bundle only after an explicit TTY yes. A non-TTY install names the bundles and leaves them inactive.
+- `git commit`, `git push`, and `git reset --hard` ask the operator through pre-execute approval.
+- Subprocess confinement is per-call. A request that is not `danger-full-access` is confined; a missing sandbox service throws. Unmarked trusted spawns stay unconfined.
+- Model-visible tool paths use POSIX separators. Error text that names a backend path keeps the backend spelling.
+- `str_replace_editor` first matches the original text so mixed-EOL files stay unique. If that misses, it matches after LF normalization and restores the majority line ending of the first 4 KiB.
+- A tool-call `id` or `name` of `null` is treated as absent and does not overwrite an already accumulated name.
 
 ## Current limitations
 

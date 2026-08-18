@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的社区 fork，面向希望在 Windows 与 macOS 上通过原生桌面窗口使用 coding agent（编程智能体）的开发者。它保留上游由 [Cordis](https://github.com/cordiverse/cordis) 驱动的“一切皆插件”架构，并在此基础上补充桌面运行、工程工作流、受限项目记忆与故障恢复能力。
+DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的社区 fork，面向希望在 Windows 与 macOS 上通过原生桌面窗口使用 coding agent（编程智能体）的开发者。它保留上游由 [Cordis](https://github.com/cordiverse/cordis) 驱动的“一切皆插件”架构，并在此基础上补充桌面运行、工程工作流、受限项目记忆、故障恢复与本地安全防护。
 
 本项目不是 DeepSeek AI 的官方桌面产品。当前功能位于 `deepseek-desktop` 分支，仍处于开发者预览阶段，可能发生破坏兼容性的变更。
 
@@ -16,10 +16,21 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 - **增加 coding agent 工程工作流：** `git_status`、`git_diff`、`git_stage` 和 `git_commit` 要求明确路径和新的人工审批。有界项目记忆只在启动上下文中注入小型索引，agent 必须搜索并读取相关条目。工具可以声明 `observe`、`interact`、`mutate` 和 `orchestrate` 效果等级，供宿主执行权限和恢复策略使用。
 - **增加插件故障隔离：** 可选插件在独立的 Cordis 子 Fiber 中运行。导入或激活失败会被记录并隔离，其他插件可以继续启动；插件清单提供诊断和重试。插件仍是受信任的本机代码，不是安全沙箱。
 - **增加崩溃恢复与审批安全：** 缺少持久化工具调用时记录为 `TOOL_NOT_STARTED`，有调用但没有结果时记录为 `TOOL_OUTCOME_UNKNOWN`，不盲目重试可能已经产生副作用的操作。未回答的审批只会随 interrupted 轮次失效，不会被重放或推定为允许。
-- **增加本地安全边界：** `/permission` 切到无审批预设前必须确认。`/api` 在绑定 `0.0.0.0` 时拒绝非回环对端，通配绑定需要显式 `allowNonLoopback`。动态插件不能通过 `exec.agent.ctx` 逃出沙箱，跨会话不能结算他人的运行审批。工作区内的用户补丁禁止 `!!js`。`dsh plugin` 在非 TTY 下拒绝自动激活。`git commit`、`git push` 和 `git reset --hard` 走审批；子进程按次 confine，缺服务时 fail-closed。
+- **增加 11 项本地安全修复：** 这些防护彼此独立，覆盖权限、网络、插件、会话、配置、Git、子进程、路径和模型输出。
+  - `/permission` 切到审批为 `never` 的预设前必须确认；没有提问服务或回答不是 Yes 时拒绝切换。
+  - `/api` 绑定 `0.0.0.0` 时拒绝已确认的非回环对端；通配绑定必须显式设置 `allowNonLoopback`。
+  - 动态插件不能通过 `exec.agent.ctx` 读到未守卫的宿主 Context。
+  - 一个会话不能结算另一个会话的插件运行审批。
+  - 工作区或系统临时目录里的用户补丁禁止 `!!js`；主目录和 profile 中的可信补丁仍可插值环境变量。
+  - `dsh plugin` 只有在 TTY 下得到明确 yes 才会激活新安装的插件包；非 TTY 只列出包名并保持未激活。
+  - `git commit`、`git push` 和 `git reset --hard` 走人工审批。
+  - 子进程按次 confine；请求隔离但缺少 sandbox 服务时 fail-closed。
+  - 模型可见的工具路径使用 POSIX 分隔符，避免 Windows 反斜杠进入上下文。
+  - `str_replace_editor` 先按原文匹配，避免把混用换行的文件误判成多处命中；回退匹配后按文件前 4 KiB 的多数换行写回。
+  - 模型返回的 tool-call `id`/`name` 为 `null` 时按缺失处理，不覆盖已经累积的名称。
 - **增加实时蓝鲸桌宠：** 透明独立窗口跟随当前会话，显示思考、工具调用、审批、错误和完成状态。高频 reasoning 被收敛为稳定的思考状态，工具目标和回答尾部只保留长度受限的摘要。
 
-这些修改的目的不是给浏览器页面增加一个装饰宠物，而是让 Harness 成为可以持续运行整个项目周期的桌面 AI 编程环境：高影响操作对人保持可见，故障可以明确恢复，实时状态也不会刷屏。
+这些修改的目的不是给浏览器页面增加一个装饰宠物，而是让 Harness 成为可以持续运行整个项目周期的桌面 AI 编程环境：高影响操作对人保持可见，本地防护在不确定时拒绝继续，故障可以明确恢复，实时状态也不会刷屏。
 
 ## 本分支提供的功能
 
@@ -46,6 +57,20 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 - assistant 已请求工具但没有持久化 `tool/call` 时，恢复记录为 `TOOL_NOT_STARTED`，可以按需重新执行。
 - 已持久化调用但没有工具结果时，恢复记录为 `TOOL_OUTCOME_UNKNOWN`；系统不会盲目重试可能已经产生副作用的操作。
 - 崩溃时尚未回答的审批只会随 interrupted 轮次失效，不会被重放、推定为允许或伪造成人工作出的决定。
+
+### 本地安全修复
+
+- `/permission` 切到审批为 `never` 的预设前会向用户确认。没有提问服务或回答不是 Yes 时拒绝切换。
+- `/api` 的 HTTP 与 WebSocket 处理在绑定 `0.0.0.0` 时拒绝已确认的非回环对端。缺失的对端地址不算远程；通配绑定还必须设置 `allowNonLoopback: true`。
+- 动态插件的 `execute` 只能看到只读 façade。读取 `exec.ctx` 或 `exec.agent.ctx` 会抛错，不能借此绕过宿主守卫。
+- 插件运行审批必须属于当前 agent。一个会话不能结算另一个会话尚未回答的运行请求。
+- 任务工作区或系统临时目录中的用户补丁在解析时禁用 `!!js`。这些根目录之外的主目录和 profile 补丁仍可插值环境变量；`--patch` 覆盖层保持可信。
+- `dsh plugin` 只有在 TTY 下得到明确 yes 才会激活新安装的插件包。非 TTY 安装会列出包名并保持未激活。
+- `git commit`、`git push` 和 `git reset --hard` 通过预执行审批询问操作者。
+- 子进程隔离策略按次生效。请求 confine 且不是 `danger-full-access` 时执行隔离；缺少 sandbox 服务则抛错。未标记的可信启动保持不隔离。
+- 模型可见的工具路径使用 POSIX 分隔符。点名后端路径的错误文本保持后端原样。
+- `str_replace_editor` 先按原文匹配，避免混用换行的文件被当成多处命中。未命中时再按 LF 规范化匹配，并按文件前 4 KiB 的多数换行写回。
+- 模型返回的 tool-call `id` 或 `name` 为 `null` 时按缺失处理，已累积的名称不会被覆盖。
 
 ## 当前限制
 

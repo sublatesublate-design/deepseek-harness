@@ -13,7 +13,8 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 ## 我做了什么修改？
 
 - **增加原生 Desktop 应用：** Electron 复用 Harness 的 Web 界面、会话、模型设置、工具、工作区和插件组合，不维护第二套客户端。托管服务在 `127.0.0.1:3081` 启动，每个进程生成新的 256 位控制凭据；HTTP、RPC 和 WebSocket 请求都必须认证，凭据不会进入 URL、页面启动数据或日志。Windows 与 macOS 启动器增加单实例聚焦、尺寸记忆、原生菜单、平台标题栏和应用图标。启动失败时显示原因、长度受限的日志尾部、完整日志路径和重试操作。
-- **增加 coding agent 工程工作流：** `git_status`、`git_diff`、`git_stage` 和 `git_commit` 要求明确路径和新的人工审批。有界项目记忆只在启动上下文中注入小型索引，agent 必须搜索并读取相关条目。工具可以声明 `observe`、`interact`、`mutate` 和 `orchestrate` 效果等级，供宿主执行权限和恢复策略使用。
+- **增加 coding agent 工程工作流：** `git_status`、`git_diff`、`git_stage` 和 `git_commit` 要求明确路径和新的人工审批。工具可以声明 `observe`、`interact`、`mutate` 和 `orchestrate` 效果等级，供宿主执行权限和恢复策略使用。
+- **增加有界项目记忆：** 正文保存在仓库根目录的 `.dsh-project-memory.json`，启动时只注入小型索引；agent 必须搜索并明确读取相关条目，避免持久化记忆持续占满上下文。记忆只是召回层，不是权威来源。适合保存长期有效的决策、约定、陷阱和环境事实，不保存聊天记录、密钥或很容易重新发现的内容。
 - **增加插件故障隔离：** 可选插件在独立的 Cordis 子 Fiber 中运行。导入或激活失败会被记录并隔离，其他插件可以继续启动；插件清单提供诊断和重试。插件仍是受信任的本机代码，不是安全沙箱。
 - **增加崩溃恢复与审批安全：** 缺少持久化工具调用时记录为 `TOOL_NOT_STARTED`，有调用但没有结果时记录为 `TOOL_OUTCOME_UNKNOWN`，不盲目重试可能已经产生副作用的操作。未回答的审批只会随 interrupted 轮次失效，不会被重放或推定为允许。
 - **增加 11 项本地安全修复：** 这些防护彼此独立，覆盖权限、网络、插件、会话、配置、Git、子进程、路径和模型输出。
@@ -30,7 +31,7 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
   - 模型返回的 tool-call `id`/`name` 为 `null` 时按缺失处理，不覆盖已经累积的名称。
 - **增加实时蓝鲸桌宠：** 透明独立窗口跟随当前会话，显示思考、工具调用、审批、错误和完成状态。高频 reasoning 被收敛为稳定的思考状态，工具目标和回答尾部只保留长度受限的摘要。
 
-这些修改的目的不是给浏览器页面增加一个装饰宠物，而是让 Harness 成为可以持续运行整个项目周期的桌面 AI 编程环境：高影响操作对人保持可见，本地防护在不确定时拒绝继续，故障可以明确恢复，实时状态也不会刷屏。
+这些修改的目的不是给浏览器页面增加一个装饰宠物，而是让 Harness 成为可以持续运行整个项目周期的桌面 AI 编程环境：项目事实可以跨会话有界召回，高影响操作对人保持可见，本地防护在不确定时拒绝继续，故障可以明确恢复，实时状态也不会刷屏。
 
 ## 本分支提供的功能
 
@@ -44,8 +45,14 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 ### coding agent 工程工作流
 
 - 新增 `git_status`、`git_diff`、`git_stage` 和 `git_commit`。暂存只能使用明确路径，提交只能使用已有暂存区，并且每次提交都要求新的人工审批。
-- 新增有界项目记忆。正文保存在仓库根目录的 `.dsh-project-memory.json`，启动时只注入小型索引；agent 必须搜索并明确读取相关条目，避免持久化记忆持续占满上下文。
 - 工具定义可声明 `observe`、`interact`、`mutate` 或 `orchestrate` 效果等级，供宿主执行权限与恢复策略使用，不把调度元数据泄漏给模型。
+
+### 有界项目记忆
+
+- 正文保存在 Git 根目录的 `.dsh-project-memory.json`；找不到 Git 根目录时使用会话工作目录。
+- 会话启动只注入活动条目的 id、类型、标题和标签。正文不会自动进入上下文。
+- `memory_search` 返回受限摘要，`memory_read` 读取一个明确条目，`memory_write` 创建或替换，`memory_archive` 从普通搜索中隐藏失效内容。
+- 记忆是有容量上限的召回层，不是权威来源。必须遵守的规则仍放在 `AGENTS.md` 或提交进仓库的文档中。适合保存长期有效的决策、约定、陷阱和环境事实，不保存聊天记录、密钥或很容易重新发现的内容。
 
 ### 插件容错与信任说明
 

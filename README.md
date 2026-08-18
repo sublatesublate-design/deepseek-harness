@@ -13,7 +13,8 @@ The original Harness experience is browser-first. I wanted a version that is eas
 ## What changed
 
 - **Native Desktop application:** Electron reuses the Harness Web UI, sessions, model settings, tools, workspaces, and plugin composition instead of creating a second client. The managed service runs on `127.0.0.1:3081` with a fresh 256-bit control credential for each process; HTTP, RPC, and WebSocket requests require authentication, and the credential never enters URLs, page boot data, or logs. Windows and macOS launchers add single-instance focus, saved bounds, native menus, platform title bars, and application icons. Startup failures show the cause, a bounded log tail, the full log path, and a retry action.
-- **Coding-agent engineering workflow:** `git_status`, `git_diff`, `git_stage`, and `git_commit` require explicit paths and fresh human approval. Bounded project memory keeps only a small index in startup context and requires the agent to search and read relevant entries. Tool effect levels (`observe`, `interact`, `mutate`, and `orchestrate`) give the host a clear permission and recovery policy.
+- **Coding-agent engineering workflow:** `git_status`, `git_diff`, `git_stage`, and `git_commit` require explicit paths and fresh human approval. Tool effect levels (`observe`, `interact`, `mutate`, and `orchestrate`) give the host a clear permission and recovery policy.
+- **Bounded project memory:** Entry bodies live in `.dsh-project-memory.json` at the repository root, while startup injects only a small index; the agent must search and explicitly read relevant entries so persistent memory does not continuously fill the context. Memory is a recall layer, not an authority source. Keep durable decisions, conventions, pitfalls, and environment facts; do not store transcripts, secrets, or facts that are cheap to rediscover.
 - **Plugin fault containment:** Optional plugins run in a dedicated Cordis child Fiber. Import or activation failures are recorded and isolated so sibling plugins can continue; the inventory exposes diagnostics and retry. Plugins remain trusted local code, not a security sandbox.
 - **Crash recovery and approval safety:** Missing durable tool calls recover as `TOOL_NOT_STARTED`; calls without results recover as `TOOL_OUTCOME_UNKNOWN` instead of blindly repeating a possibly side-effecting operation. An unanswered approval expires only with an interrupted turn and is never replayed or inferred as granted.
 - **Eleven local security fixes:** These protections are independent. They cover permission, network, plugins, sessions, configuration, Git, subprocesses, paths, and model output.
@@ -30,7 +31,7 @@ The original Harness experience is browser-first. I wanted a version that is eas
   - A tool-call `id` or `name` of `null` is treated as absent and does not overwrite an already accumulated name.
 - **Live whale companion:** A transparent Desktop window follows the active session and reflects thinking, tool calls, approvals, errors, and completed answers. High-frequency reasoning is reduced to a stable thinking state, while tool targets and answer tails remain bounded summaries.
 
-The purpose is not to add a decorative pet to a browser page. It is to make Harness a desktop AI coding environment that can stay open for a project, refuse to continue when a local protection cannot hold, recover clearly from failures, and keep high-impact actions visible to the human operator.
+The purpose is not to add a decorative pet to a browser page. It is to make Harness a desktop AI coding environment that can stay open for a project, recall bounded project facts across sessions, refuse to continue when a local protection cannot hold, recover clearly from failures, and keep high-impact actions visible to the human operator.
 
 ## Features in this branch
 
@@ -44,8 +45,14 @@ The purpose is not to add a decorative pet to a browser page. It is to make Harn
 ### Coding-agent engineering workflows
 
 - Adds `git_status`, `git_diff`, `git_stage`, and `git_commit`. Staging requires explicit paths, commits use only the existing index, and every commit requires fresh human approval.
-- Adds bounded project memory. Entry bodies live in `.dsh-project-memory.json` at the repository root, while startup injects only a small index; the agent must search and explicitly read relevant entries so persistent memory does not continuously fill the context.
 - Tool definitions can declare an `observe`, `interact`, `mutate`, or `orchestrate` effect level for Host permission and recovery policy without leaking scheduler metadata to the model.
+
+### Bounded project memory
+
+- Entry bodies live in `.dsh-project-memory.json` at the Git root; if no Git root exists, the session working directory is used.
+- Startup injects only the id, type, title, and tags of active entries. Entry bodies do not enter context automatically.
+- `memory_search` returns a bounded summary, `memory_read` reads one explicit entry, `memory_write` creates or replaces an entry, and `memory_archive` hides stale content from ordinary search.
+- Memory is a capacity-limited recall layer, not an authority source. Rules that must be followed still belong in `AGENTS.md` or checked-in documentation. Keep durable decisions, conventions, pitfalls, and environment facts; do not store transcripts, secrets, or facts that are cheap to rediscover.
 
 ### Plugin containment and trust
 

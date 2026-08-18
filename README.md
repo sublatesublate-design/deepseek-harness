@@ -6,11 +6,17 @@ DeepSeek Desktop is a community fork of [DeepSeek Harness](https://github.com/de
 
 This project is not an official DeepSeek AI desktop product. The current features live on the `deepseek-desktop` branch and remain a developer preview with no compatibility guarantee.
 
-## Why use this Desktop fork?
+## Why this fork exists
 
-- **A native desktop workspace:** Harness runs in its own Windows or macOS window while keeping its Web UI, sessions, models, tools, and plugin architecture.
-- **A live whale companion:** The DeepSeek whale mirrors thinking, tool calls, approvals, and errors in a transparent companion window that stays synchronized with the active session.
-- **Built for long-running projects:** Saved window state, local service management, recovery controls, and multiple workspace support make it easier to keep an AI coding environment open throughout a project.
+The original Harness experience is browser-first. That leaves three practical gaps for long-running desktop work: the agent lives inside a browser tab, a second window has no built-in session-state companion, and browser overlays cannot move outside the current viewport.
+
+## What changed
+
+- **A native Desktop host:** Electron opens the existing Harness Web UI, sessions, models, tools, and plugin composition in a Windows or macOS application window.
+- **A live whale companion:** A transparent companion window follows the selected session and reflects thinking, tool calls, approvals, errors, and completed answers. Its session selection is synchronized with the main window.
+- **A readable real-time status layer:** High-frequency reasoning text is reduced to a stable thinking state; tool targets and answer tails remain bounded summaries instead of flooding the screen.
+
+These changes are aimed at people who keep an AI coding environment open for an entire project. The fork also adds managed local-service startup, recovery controls, explicit Git workflows, bounded project memory, and plugin-failure containment so the desktop process is easier to operate safely over time.
 
 ## Features in this branch
 

@@ -19,7 +19,8 @@ import {
 function fakeHttpServer(
   routes: WebRoute[],
   upgrades: WebUpgradeRoute[],
-): Pick<WebServer, 'register' | 'registerUpgrade' | 'tapIndex' | 'port'> {
+  host: WebServer['host'] = '127.0.0.1',
+): Pick<WebServer, 'register' | 'registerUpgrade' | 'tapIndex' | 'port' | 'host'> {
   return {
     register(route) {
       if (routes.some(candidate => candidate.kind === route.kind && candidate.path === route.path)) {
@@ -34,13 +35,23 @@ function fakeHttpServer(
     },
     tapIndex: () => () => {},
     port: 0,
+    host,
   }
 }
 
 /** Bodyless GET carrying the given headers (enough for the trust fence + bridge). */
-function fakeRequest(headers: Record<string, string>, url = `${API_PATH}/session.list`): IncomingMessage {
+function fakeRequest(
+  headers: Record<string, string>,
+  url = `${API_PATH}/session.list`,
+  remoteAddress?: string,
+): IncomingMessage {
   const request = Readable.from([]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'GET', headers })
+  Object.assign(request, {
+    url,
+    method: 'GET',
+    headers,
+    socket: remoteAddress === undefined ? {} : { remoteAddress },
+  })
   return request
 }
 
@@ -77,7 +88,10 @@ function fakeResponse(): { response: ServerResponse; state: { status?: number; b
   return { response, state }
 }
 
-async function mounted(config?: ConnectionConfig): Promise<{
+async function mounted(
+  config?: ConnectionConfig,
+  host: WebServer['host'] = '127.0.0.1',
+): Promise<{
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
   dispose: () => Promise<void>
@@ -85,7 +99,7 @@ async function mounted(config?: ConnectionConfig): Promise<{
   const ctx = new Context()
   const routes: WebRoute[] = []
   const upgrades: WebUpgradeRoute[] = []
-  ctx.provide('webServer', fakeHttpServer(routes, upgrades) as WebServer)
+  ctx.provide('webServer', fakeHttpServer(routes, upgrades, host) as WebServer)
   ctx.provide('apiProxy', {} as unknown as ApiProxy)
   const fiber = ctx.plugin({ inject: [...inject], apply }, config)
   await fiber.await()
@@ -237,6 +251,37 @@ describe('connection node half', () => {
       host: 'harness.example:3080', origin: 'http://harness.example:3080', 'sec-fetch-site': 'same-origin',
     }), declared.response)
     expect(declared.state.status).toBe(404)
+    await dispose()
+  })
+
+  it('rejects a proven non-loopback peer on a wildcard bind, not an unknown or loopback peer', async () => {
+    const token = 'desktop-control-token-with-at-least-32-characters'
+    const { routes, upgrades, dispose } = await mounted({ controlToken: token }, '0.0.0.0')
+    const headers = { host: '127.0.0.1:3081', [CONTROL_TOKEN_HEADER]: token }
+
+    const remote = fakeResponse()
+    await routes[0]!.handler(fakeRequest(headers, `${API_PATH}/auth-probe`, '192.168.1.50'), remote.response)
+    expect(remote.state).toMatchObject({ status: 403, body: 'forbidden' })
+
+    const loopback = fakeResponse()
+    await routes[0]!.handler(fakeRequest(headers, `${API_PATH}/auth-probe`, '127.0.0.1'), loopback.response)
+    expect(loopback.state.status).toBe(204)
+
+    const unknown = fakeResponse()
+    await routes[0]!.handler(fakeRequest(headers, `${API_PATH}/auth-probe`), unknown.response)
+    expect(unknown.state.status).toBe(204)
+
+    const socket = new PassThrough()
+    const chunks: Buffer[] = []
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+    const ended = once(socket, 'end')
+    await upgrades[0]!.handler(
+      fakeRequest({ host: '127.0.0.1:3081' }, MUX_EVENTS_PATH, '10.0.0.8'),
+      socket,
+      Buffer.alloc(0),
+    )
+    await ended
+    expect(Buffer.concat(chunks).toString()).toContain('HTTP/1.1 403 Forbidden')
     await dispose()
   })
 

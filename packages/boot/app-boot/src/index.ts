@@ -7,9 +7,10 @@
  */
 
 import { pathToFileURL } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { parseEnv } from 'node:util'
-import { basename, dirname, isAbsolute, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import * as yaml from 'js-yaml'
 import { Context, type FiberState } from '@deepseek-ai/cordis'
 import Loader, { type Entry, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
@@ -205,6 +206,17 @@ const bootstrapIncludes = new WeakMap<Context, Entry>()
 // from what the include mounts. User patch layers share it so they may
 // reference `process.env`.
 const userPatchesSchema = entryListSchema
+const workspacePatchesSchema = yaml.JSON_SCHEMA
+
+/** Options that select whether a user patch file may contain `!!js`. */
+export interface LoadPatchesOptions {
+  /**
+   * Task workspace root at boot. A patch file under this root or the platform
+   * temp area is parsed without `!!js`, because the agent can write those
+   * paths. Omitted keeps `!!js` (home/profile files outside the workspace).
+   */
+  workspaceRoot?: string
+}
 
 /** Options for live user patch-layer reconciliation. */
 export interface UserPatchWatchOptions {
@@ -212,6 +224,8 @@ export interface UserPatchWatchOptions {
   binName: string
   /** Absolute path of the watched patch file (a profile's `cordis.patch.yml`). */
   filename: string
+  /** Task workspace root used to decide whether this file may contain `!!js`. */
+  workspaceRoot?: string
   /**
    * Compose the full patch list for a fresh user-layer generation —
    * the same composition the app booted with, so a reload can interleave the
@@ -243,7 +257,9 @@ export async function watchUserPatches(
     // updates the root Include's other options between refreshes (none exists
     // today) must not have them silently reverted by a user-layer reload.
     const { patches: _previousPatches, ...includeConfig } = entry.options.config as Include.Config
-    const userPatches = loadOptionalPatches(binName, filename) ?? []
+    const userPatches = loadOptionalPatches(binName, filename, {
+      ...options.workspaceRoot === undefined ? {} : { workspaceRoot: options.workspaceRoot },
+    }) ?? []
     const patches = compose(userPatches)
     await entry.update({
       config: {
@@ -273,9 +289,14 @@ export async function watchUserPatches(
  * loud at boot, never be silently skipped.
  * @param binName - the diagnostic prefix on the thrown error.
  * @param file - absolute path of the patch file.
+ * @param options - optional workspace root that disables `!!js` for writable files.
  * @returns the parsed patches, or `undefined` when the file does not exist.
  */
-export function loadOptionalPatches(binName: string, file: string): PatchOptions[] | undefined {
+export function loadOptionalPatches(
+  binName: string,
+  file: string,
+  options: LoadPatchesOptions = {},
+): PatchOptions[] | undefined {
   let content: string
   try {
     content = readFileSync(file, 'utf8')
@@ -283,7 +304,7 @@ export function loadOptionalPatches(binName: string, file: string): PatchOptions
     if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
     throw new Error(`${binName}: failed to read patches ${file}: ${String(error)}`)
   }
-  return parsePatchList(binName, file, content, 'patches')
+  return parsePatchList(binName, file, content, 'patches', patchSchemaFor(file, options.workspaceRoot))
 }
 
 /**
@@ -302,8 +323,36 @@ export function loadOverlayPatches(binName: string, file: string): PatchOptions[
   } catch (error) {
     throw new Error(`${binName}: failed to read overlay ${file}: ${String(error)}`)
   }
-  return parsePatchList(binName, file, content, 'overlay')
+  return parsePatchList(binName, file, content, 'overlay', userPatchesSchema)
 }
+
+function canonicalExisting(path: string): string {
+  try {
+    return realpathSync.native(path)
+  } catch {
+    return path
+  }
+}
+
+function isInsideRoot(root: string, target: string): boolean {
+  const rel = relative(canonicalExisting(root), canonicalExisting(target))
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/**
+ * Choose the YAML dialect for one user patch file. Files the agent can write
+ * (the task workspace and platform temp) reject `!!js`; other locations keep
+ * the documented `process.env` interpolation dialect.
+ */
+function patchSchemaFor(file: string, workspaceRoot: string | undefined): yaml.Schema {
+  if (workspaceRoot === undefined) return userPatchesSchema
+  const parent = dirname(file)
+  if (isInsideRoot(workspaceRoot, parent) || isInsideRoot(tmpdir(), parent) || isInsideRoot('/tmp', parent)) {
+    return workspacePatchesSchema
+  }
+  return userPatchesSchema
+}
+
 /**
  * Parse one loader patch list: a top-level YAML array of
  * `@deepseek-ai/cordis-plugin-include` `PatchOptions` (id-targeted config overrides and
@@ -315,14 +364,15 @@ export function loadOverlayPatches(binName: string, file: string): PatchOptions[
  * @param file - the source path, quoted in errors.
  * @param content - the file's text.
  * @param label - what to call this list in errors (`patches`, `overlay`).
+ * @param schema - YAML dialect; workspace-writable user files omit `!!js`.
  * @returns the parsed patch list.
  */
 function parsePatchList(
-  binName: string, file: string, content: string, label: string,
+  binName: string, file: string, content: string, label: string, schema: yaml.Schema,
 ): PatchOptions[] {
   let parsed: unknown
   try {
-    parsed = yaml.load(content, { schema: userPatchesSchema })
+    parsed = yaml.load(content, { schema })
   } catch (error) {
     throw new Error(`${binName}: failed to parse ${label} ${file}: ${String(error)}`)
   }

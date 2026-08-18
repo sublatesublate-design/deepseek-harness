@@ -4230,7 +4230,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubprocessSpawnSpec',
-    declaration: 'export interface SubprocessSpawnSpec {\n    argv: readonly string[];\n    cwd: string;\n    stdio: SubprocessStdio;\n    graceMs: number;\n    signal?: AbortSignal | undefined;\n    env?: NodeJS.ProcessEnv | undefined;\n}',
+    declaration: 'export interface SubprocessSpawnSpec {\n    argv: readonly string[];\n    cwd: string;\n    stdio: SubprocessStdio;\n    graceMs: number;\n    signal?: AbortSignal | undefined;\n    env?: NodeJS.ProcessEnv | undefined;\n    sandbox?: {\n        mode: \'read-only\' | \'workspace-write\' | \'danger-full-access\';\n        workspaceRoot: string;\n    } | undefined;\n}',
   },
   {
     name: 'SubprocessStdinMode',

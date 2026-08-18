@@ -97,7 +97,10 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
  */
 export function prepareProfile(name: string, userLayer = true): Profile {
   healProfilesModuleFallback(INSTALL_ANCHOR)
-  const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, { userLayer })
+  const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, {
+    userLayer,
+    workspaceRoot: process.cwd(),
+  })
   writeFileSync(join(profile.dir, PROFILE_ROOT_FILENAME), PROFILE_ROOT_CONFIG)
   return profile
 }
@@ -144,7 +147,7 @@ function composeProfile(
   patchFiles: readonly string[],
 ): ComposedProfile {
   const profile = prepareProfile(name)
-  const homePatches = loadOptionalPatches(NAME, homePatchPath()) ?? []
+  const homePatches = loadOptionalPatches(NAME, homePatchPath(), { workspaceRoot: process.cwd() }) ?? []
   const overlays = patchFiles.flatMap(file => loadOverlayPatches(NAME, resolve(file)))
   const bundlePatches = profile.layers.flatMap(layer => layer.patches)
   const rows = new Map<string, EntryOptions>()
@@ -239,8 +242,8 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   // removing the override could never revert the row to the bundle default.
   const composeLive = (): PatchOptions[] => structuredClone([
     ...composed.bundlePatches,
-    ...loadOptionalPatches(NAME, composed.profile.patchPath) ?? [],
-    ...loadOptionalPatches(NAME, homePatchPath()) ?? [],
+    ...loadOptionalPatches(NAME, composed.profile.patchPath, { workspaceRoot: process.cwd() }) ?? [],
+    ...loadOptionalPatches(NAME, homePatchPath(), { workspaceRoot: process.cwd() }) ?? [],
     ...composed.overlays,
   ])
   // Cloned for the same insert-aliasing reason as composeLive: the boot

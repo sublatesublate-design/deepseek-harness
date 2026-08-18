@@ -319,7 +319,7 @@ describe('dynamic runner dispatch', () => {
   it('accepts and ignores an answer to a request nobody is waiting for', async () => {
     const { runner } = await setup()
 
-    await expect(runner.resolveRequestRun(ApprovalRequestId('approval-404'), {
+    await expect(runner.resolveRequestRun(AGENT_A, ApprovalRequestId('approval-404'), {
       ok: true, pluginRunId: 'run-1' as never,
     }))
       .resolves.toEqual({ accepted: false })
@@ -343,7 +343,7 @@ describe('dynamic runner dispatch', () => {
     // The user stops it while that page is still loading, cancelling the request.
     await runner.stop(AGENT_A, pluginId)
 
-    await expect(runner.resolveRequestRun(requestId, { ok: true, pluginRunId: first.pluginRunId }))
+    await expect(runner.resolveRequestRun(AGENT_A, requestId, { ok: true, pluginRunId: first.pluginRunId }))
       .resolves.toEqual({ accepted: false })
     expect(gateway.events).toContainEqual([
       'cordis/request-run-resolved',
@@ -368,7 +368,7 @@ describe('dynamic runner dispatch', () => {
     if (!started.ok) throw new Error(started.message)
     await runner.stop(AGENT_A, pluginId)
 
-    await expect(runner.resolveRequestRun(requestId, { ok: true, pluginRunId: started.pluginRunId }))
+    await expect(runner.resolveRequestRun(AGENT_A, requestId, { ok: true, pluginRunId: started.pluginRunId }))
       .resolves.toEqual({ accepted: false })
     controller.abort()
     expect(gateway.events).toContainEqual([
@@ -394,7 +394,9 @@ describe('dynamic runner dispatch', () => {
     const requestId = (asked as { requestId: ApprovalRequestIdType }).requestId
     const started = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', requestId, false)
     if (!started.ok) throw new Error(started.message)
-    await expect(runner.resolveRequestRun(requestId, { ok: true, pluginRunId: started.pluginRunId }))
+    await expect(runner.resolveRequestRun(AGENT_B, requestId, { ok: true, pluginRunId: started.pluginRunId }))
+      .resolves.toEqual({ accepted: false })
+    await expect(runner.resolveRequestRun(AGENT_A, requestId, { ok: true, pluginRunId: started.pluginRunId }))
       .resolves.toEqual({ accepted: true })
     expect(running(runner, AGENT_A)).toEqual([{ id: pluginId, running: true }])
   })

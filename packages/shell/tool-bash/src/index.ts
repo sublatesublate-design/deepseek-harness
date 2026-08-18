@@ -187,6 +187,8 @@ const BACKGROUND_OUTPUT_PROPERTIES = {
   jobId: { type: 'string', required: true },
 } as const
 
+const HIGH_RISK_GIT = /\bgit\s+(?:commit|push)\b|\bgit\s+reset\s+--hard\b/
+
 export function apply(ctx: Context, config: Config = {}): void {
   const backgroundEnabled = config.enableRunInBackground ?? true
   const defaultMode = ctx.shell.sandboxMode
@@ -195,6 +197,18 @@ export function apply(ctx: Context, config: Config = {}): void {
   if (defaultMode !== undefined && sandboxPolicy === undefined) {
     throw new Error('tool-bash: the mounted bash executor confines but ctx.sandboxPolicy is missing')
   }
+  ctx.on('tools/pre-execute', async (exec, next) => {
+    const downstream = await next()
+    if (downstream.kind !== 'allow' || exec.name !== 'bash') return downstream
+    const command = typeof (exec.arguments as { command?: unknown }).command === 'string'
+      ? (exec.arguments as { command: string }).command
+      : ''
+    if (!HIGH_RISK_GIT.test(command)) return downstream
+    return {
+      kind: 'ask',
+      reason: `High-risk Git command requires approval: ${command}`,
+    }
+  })
   /** Resolve the complete standing policy for this call when a confining executor is mounted. */
   const resolveSandboxPolicy = (exec: ToolExecution): SandboxExecutionPolicy | undefined =>
     sandboxPolicy?.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })

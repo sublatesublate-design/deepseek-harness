@@ -9,8 +9,20 @@ import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
 import { isAuthorizedApiRequest } from './api-request-auth.ts'
 import { assertTrustedAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+import { isLoopbackRemoteAddress } from './loopback-hostname.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
+
+/**
+ * `/api` accepts a remote TCP peer only when the carrier is bound to loopback.
+ * A missing peer address (Unix socket, test fake) is not a proven remote, so
+ * it does not fail closed. Wildcard bind plus a proven non-loopback peer is
+ * the only rejected case — `0.0.0.0` stays a listen spelling, not a remote
+ * RPC grant.
+ */
+function rejectRemoteApiPeer(host: string | undefined, remoteAddress: string | undefined): boolean {
+  return host === '0.0.0.0' && remoteAddress !== undefined && !isLoopbackRemoteAddress(remoteAddress)
+}
 
 export type {
   ConnectionRpcAuthority,
@@ -176,6 +188,11 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
         res.end('forbidden')
         return
       }
+      if (rejectRemoteApiPeer(ctx.webServer.host, req.socket?.remoteAddress)) {
+        res.writeHead(403)
+        res.end('forbidden')
+        return
+      }
       if (!isAuthorizedApiRequest(req, controlToken)) {
         res.writeHead(401)
         res.end('unauthorized')
@@ -197,6 +214,10 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
         handler: (req, socket, head) => {
           if (!isTrustedApiRequest(req, trustedHosts)) {
             rejectWebSocketUpgrade(socket)
+            return
+          }
+          if (rejectRemoteApiPeer(apiCtx.webServer.host, req.socket?.remoteAddress)) {
+            rejectWebSocketUpgrade(socket, 403)
             return
           }
           if (!isAuthorizedApiRequest(req, controlToken)) {

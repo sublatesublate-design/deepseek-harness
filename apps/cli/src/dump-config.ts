@@ -38,7 +38,7 @@ export function runDumpConfig(profile: string, defaultOnly: boolean, patches: re
       layers.push({ label: loaded.patchPath, patches: loaded.patches })
     }
     const homePatchFile = homePatchPath()
-    const homePatches = loadOptionalPatches(NAME, homePatchFile)
+    const homePatches = loadOptionalPatches(NAME, homePatchFile, { workspaceRoot: process.cwd() })
     if (homePatches !== undefined) {
       layers.push({ label: homePatchFile, patches: homePatches })
     }

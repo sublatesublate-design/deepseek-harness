@@ -347,4 +347,20 @@ describe('translate: defensive tool-call branches', () => {
     )))
     expect(chunks[1]).toEqual({ type: 'tool-call-delta', index: 0, id: 'c', argumentsDelta: '' })
   })
+
+  it('null tool-call delta fields do not overwrite accumulated name', async () => {
+    const chunks = await collect(translate(feed(
+      firstChunk,
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'get_weather' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: null, function: { name: null, arguments: '{"x":1}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      DONE,
+    )))
+    expect(chunks).toContainEqual(
+      { type: 'tool-call-delta', index: 0, id: 'call_1', name: 'get_weather', argumentsDelta: '{"x":1}' },
+    )
+    expect(chunks).toContainEqual(
+      { type: 'block-end', index: 0, block: { type: 'tool-call', id: 'call_1', name: 'get_weather', arguments: '{"x":1}' } },
+    )
+  })
 })

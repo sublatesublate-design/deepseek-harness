@@ -16,6 +16,7 @@ DeepSeek Desktop 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/dee
 - **增加 coding agent 工程工作流：** `git_status`、`git_diff`、`git_stage` 和 `git_commit` 要求明确路径和新的人工审批。有界项目记忆只在启动上下文中注入小型索引，agent 必须搜索并读取相关条目。工具可以声明 `observe`、`interact`、`mutate` 和 `orchestrate` 效果等级，供宿主执行权限和恢复策略使用。
 - **增加插件故障隔离：** 可选插件在独立的 Cordis 子 Fiber 中运行。导入或激活失败会被记录并隔离，其他插件可以继续启动；插件清单提供诊断和重试。插件仍是受信任的本机代码，不是安全沙箱。
 - **增加崩溃恢复与审批安全：** 缺少持久化工具调用时记录为 `TOOL_NOT_STARTED`，有调用但没有结果时记录为 `TOOL_OUTCOME_UNKNOWN`，不盲目重试可能已经产生副作用的操作。未回答的审批只会随 interrupted 轮次失效，不会被重放或推定为允许。
+- **增加本地安全边界：** `/permission` 切到无审批预设前必须确认。`/api` 在绑定 `0.0.0.0` 时拒绝非回环对端，通配绑定需要显式 `allowNonLoopback`。动态插件不能通过 `exec.agent.ctx` 逃出沙箱，跨会话不能结算他人的运行审批。工作区内的用户补丁禁止 `!!js`。`dsh plugin` 在非 TTY 下拒绝自动激活。`git commit`、`git push` 和 `git reset --hard` 走审批；子进程按次 confine，缺服务时 fail-closed。
 - **增加实时蓝鲸桌宠：** 透明独立窗口跟随当前会话，显示思考、工具调用、审批、错误和完成状态。高频 reasoning 被收敛为稳定的思考状态，工具目标和回答尾部只保留长度受限的摘要。
 
 这些修改的目的不是给浏览器页面增加一个装饰宠物，而是让 Harness 成为可以持续运行整个项目周期的桌面 AI 编程环境：高影响操作对人保持可见，故障可以明确恢复，实时状态也不会刷屏。

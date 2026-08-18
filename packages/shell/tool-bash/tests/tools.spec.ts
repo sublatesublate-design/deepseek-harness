@@ -709,6 +709,21 @@ describe('sandbox escalation through the generic task producer', () => {
     expect((result.value as { sandbox: object }).sandbox).not.toHaveProperty('runnerFailed')
   })
 
+  it('asks before git commit, push, or reset --hard in bash', async () => {
+    const { ctx } = await setupSandboxed(true)
+    const asked: string[] = []
+    ctx.on('approval/request', (req) => {
+      asked.push(req.reason ?? '')
+      return Promise.resolve<ApprovalOutcome>('rejected')
+    })
+    const result = await call(ctx, 'bash', {
+      command: 'git push origin main',
+      description: 'publish',
+    }, sandboxAgent())
+    expect(asked.some(reason => reason.includes('git push'))).toBe(true)
+    expect(result.isError).toBe(true)
+  })
+
   it('keeps the exhaustiveness backstop for a rogue approval implementation', async () => {
     const { ctx } = await setupSandboxed(true)
     ctx.approval.request = () => Promise.resolve('rogue' as ApprovalOutcome)

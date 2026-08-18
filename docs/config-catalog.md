@@ -412,7 +412,7 @@ export interface ConnectionConfig {
 }
 ```
 
-Source: [`packages/client/connection/src/index.ts:52`](../packages/client/connection/src/index.ts)
+Source: [`packages/client/connection/src/index.ts:64`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -798,6 +798,11 @@ export interface Config {
   host: '127.0.0.1' | '0.0.0.0'
   /** Listen port; zero requests an OS-assigned port. */
   port: number
+  /**
+   * Required to bind `0.0.0.0`. Default false: a wildcard bind is a
+   * deliberate network exposure and must be opted into from config.
+   */
+  allowNonLoopback?: boolean
 }
 ```
 
@@ -1332,7 +1337,7 @@ export interface PresetSpec {
 
 Depends on: [`ApprovalPolicy`](subsystems/approval.md) · [`SandboxMode`](subsystems/sandbox.md)
 
-Source: [`packages/interaction/permission-presets/src/index.ts:140`](../packages/interaction/permission-presets/src/index.ts)
+Source: [`packages/interaction/permission-presets/src/index.ts:141`](../packages/interaction/permission-presets/src/index.ts)
 
 <a id="deepseek-aidsh-persona"></a>
 
@@ -2447,7 +2452,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/git/tool-git/src/index.ts:23`](../packages/git/tool-git/src/index.ts)
+Source: [`packages/git/tool-git/src/index.ts:24`](../packages/git/tool-git/src/index.ts)
 
 <a id="deepseek-aidsh-tool-goal"></a>
 
@@ -2635,7 +2640,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/fs/tool-str-replace-editor/src/index.ts:497`](../packages/fs/tool-str-replace-editor/src/index.ts)
+Source: [`packages/fs/tool-str-replace-editor/src/index.ts:548`](../packages/fs/tool-str-replace-editor/src/index.ts)
 
 <a id="deepseek-aidsh-tool-subagent"></a>
 

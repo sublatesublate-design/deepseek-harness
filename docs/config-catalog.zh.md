@@ -800,6 +800,11 @@ export interface Config {
   host: '127.0.0.1' | '0.0.0.0'
   /** Listen port; zero requests an OS-assigned port. */
   port: number
+  /**
+   * Required to bind `0.0.0.0`. Default false: a wildcard bind is a
+   * deliberate network exposure and must be opted into from config.
+   */
+  allowNonLoopback?: boolean
 }
 ```
 

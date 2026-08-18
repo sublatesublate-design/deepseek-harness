@@ -261,8 +261,8 @@ export function apply(ctx: Context): void {
         if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
         return answered.value
       },
-      resolveRequestRun: async (requestId, resolution) => {
-        const answered = await ctx.remote.dynamicCordisRunner.resolveRequestRun(requestId, resolution)
+      resolveRequestRun: async (agentId, requestId, resolution) => {
+        const answered = await ctx.remote.dynamicCordisRunner.resolveRequestRun(agentId, requestId, resolution)
         // Thrown rather than returned: `answer` logs and drops a failed answer,
         // and the host settles the request on its own either way.
         if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)

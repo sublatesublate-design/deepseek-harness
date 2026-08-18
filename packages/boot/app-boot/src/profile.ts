@@ -30,7 +30,7 @@ import { basename, dirname, join } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { applyEntryPatches, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { loadOverlayPatches } from './index.ts'
+import { loadOptionalPatches, loadOverlayPatches } from './index.ts'
 
 /** Directory under the Harness home holding every profile. */
 export const PROFILES_DIR = 'profiles'
@@ -370,7 +370,7 @@ export function resolveBundleDir(
  */
 export function loadProfile(
   binName: string, name: string, installAnchor: string, home: string = resolveDshHome(),
-  options: { userLayer?: boolean } = {},
+  options: { userLayer?: boolean; workspaceRoot?: string } = {},
 ): Profile {
   const dir = resolveProfileDir(name, home)
   if (!existsSync(join(dir, 'package.json'))) {
@@ -396,8 +396,10 @@ export function loadProfile(
     return { packageName, packageDir, patchPath, patches: loadOverlayPatches(binName, patchPath) }
   })
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
-  const patches = options.userLayer !== false && existsSync(patchPath)
-    ? loadOverlayPatches(binName, patchPath)
+  const patches = options.userLayer !== false
+    ? loadOptionalPatches(binName, patchPath, {
+      ...options.workspaceRoot === undefined ? {} : { workspaceRoot: options.workspaceRoot },
+    }) ?? []
     : []
   return { name, dir, layers, patchPath, patches }
 }

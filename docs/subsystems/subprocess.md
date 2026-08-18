@@ -126,6 +126,15 @@ interface SubprocessSpawnSpec {
    * tombstone that removes an ordinary ambient entry from the child.
    */
   env?: NodeJS.ProcessEnv | undefined
+  /**
+   * Per-call file-effect policy from the consumer's `sandboxPolicy.resolve`.
+   * When present and not `danger-full-access`, the local runtime confines
+   * argv through `ctx.sandbox` or throws if that service is absent.
+   */
+  sandbox?: {
+    mode: 'read-only' | 'workspace-write' | 'danger-full-access'
+    workspaceRoot: string
+  } | undefined
 }
 ```
 

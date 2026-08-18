@@ -89,6 +89,9 @@ describe('permissions projection unit', () => {
 describe('/permission command', () => {
   it('switches through permission.set and logs the lifecycle pair', async () => {
     const { ctx, session } = await harness()
+    ctx.provide('userQuestions', {
+      ask: async () => ({ answers: [{ id: 'confirm-danger', selected: ['Yes'] }] }),
+    })
     const { agent, inject } = await agentFor(ctx, session)
     const execution = await ctx.commands.execute(agent, '/permission danger-full-access', new AbortController().signal)
     expect(execution?.result).toEqual({ kind: 'success', text: 'preset danger-full-access' })
@@ -129,5 +132,36 @@ describe('/permission command', () => {
     })
     expect(session.events.filter(event =>
       event.type !== 'command/run' && event.type !== 'command/done')).toEqual(before)
+  })
+
+  it('refuses a never-approval switch when no question provider is mounted', async () => {
+    const { ctx, session } = await harness()
+    const { agent } = await agentFor(ctx, session)
+    const execution = await ctx.commands.execute(agent, '/permission danger-full-access', new AbortController().signal)
+    expect(execution?.result).toEqual({
+      kind: 'error',
+      text: 'refused preset switch to danger-full-access: confirmation is required and no question provider is mounted',
+    })
+    expect(ctx.permissionPresets.current(session.events)).toBe('workspace-write')
+  })
+
+  it('cancels a never-approval switch when the user declines', async () => {
+    const { ctx, session } = await harness()
+    ctx.provide('userQuestions', {
+      ask: async () => ({ answers: [{ id: 'confirm-danger', selected: ['No'] }] }),
+    })
+    const { agent } = await agentFor(ctx, session)
+    const execution = await ctx.commands.execute(agent, '/permission danger-full-access', new AbortController().signal)
+    expect(execution?.result).toEqual({ kind: 'error', text: 'cancelled preset switch to danger-full-access' })
+    expect(ctx.permissionPresets.current(session.events)).toBe('workspace-write')
+  })
+
+  it('switches an ask-approval preset without confirmation', async () => {
+    const { ctx, session } = await harness()
+    ctx.permissionPresets.set(session, 'danger-full-access')
+    const { agent } = await agentFor(ctx, session)
+    const execution = await ctx.commands.execute(agent, '/permission workspace-write', new AbortController().signal)
+    expect(execution?.result).toEqual({ kind: 'success', text: 'preset workspace-write' })
+    expect(ctx.permissionPresets.current(session.events)).toBe('workspace-write')
   })
 })

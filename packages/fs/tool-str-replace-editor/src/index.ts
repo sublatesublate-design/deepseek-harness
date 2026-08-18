@@ -16,6 +16,31 @@ import type { ToolCallView, ToolRunContext } from '@deepseek-ai/dsh-tools'
 
 const TRUNCATED_MESSAGE = '<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>'
 
+type LineEndings = 'LF' | 'CRLF'
+
+/**
+ * Same majority-of-first-4k rule as `dsh-fs-local` `detectLineEndings`: one
+ * stray CRLF in an LF file must not rewrite the whole file.
+ */
+function detectLineEndings(raw: string): LineEndings {
+  const sample = raw.slice(0, 4096)
+  const crlfCount = sample.split('\r\n').length - 1
+  const lfCount = sample.split('\n').length - 1 - crlfCount
+  return crlfCount > lfCount ? 'CRLF' : 'LF'
+}
+
+function normalizeLineEndings(content: string): string {
+  return content.replaceAll('\r\n', '\n')
+}
+
+function restoreLineEndings(content: string, lineEndings: LineEndings): string {
+  return lineEndings === 'LF' ? content : normalizeLineEndings(content).split('\n').join('\r\n')
+}
+
+function posixDisplayPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
 const DEFAULT_DESCRIPTION = `
 Custom editing tool for viewing, creating and editing files
 * State is persistent across command calls and discussions with the user
@@ -143,7 +168,8 @@ function formatFileView(
   let lines = allLines
   let initialLine = 1
   let finalLine: number | undefined
-  let prompt = `Here's the content of ${path} with line numbers (which has a total of ${allLines.length} lines)`
+  const displayPath = posixDisplayPath(path)
+  let prompt = `Here's the content of ${displayPath} with line numbers (which has a total of ${allLines.length} lines)`
   if (viewRange !== undefined) {
     const [requestedInitialLine, requestedFinalLine] = viewRange
     if (
@@ -196,21 +222,23 @@ async function listDirectory(
       && candidate.name !== 'node_modules'
       && candidate.name !== '__pycache__')) {
       const type = entry.type === 'directory' ? 'd' : entry.type === 'file' ? 'f' : '?'
-      rows.push(`${type}\t${entry.target.displayPath}`)
+      const entryPath = posixDisplayPath(entry.target.displayPath)
+      rows.push(`${type}\t${entryPath}`)
       if (entry.type === 'directory' && depth < 2) {
         rows.push(...await visit(entry.target, depth + 1))
       }
     }
     return rows
   }
-  const rows = [`d\t${target.displayPath}`, ...await visit(target, 1)]
+  const displayPath = posixDisplayPath(target.displayPath)
+  const rows = [`d\t${displayPath}`, ...await visit(target, 1)]
   rows.sort((left, right) => {
     const leftPath = left.slice(left.indexOf('\t') + 1)
     const rightPath = right.slice(right.indexOf('\t') + 1)
     return codepointCompare(leftPath, rightPath)
   })
   const listing = maybeTruncate(rows.join('\n') + '\n', maxOutputChars)
-  return `Here're the files and directories up to 2 levels deep in ${target.displayPath}, excluding hidden items, node_modules, and Python cache directories:\n${listing}\n`
+  return `Here're the files and directories up to 2 levels deep in ${displayPath}, excluding hidden items, node_modules, and Python cache directories:\n${listing}\n`
 }
 
 async function viewPath(
@@ -268,7 +296,7 @@ async function createFile(
     throw policy.mapError(error, sandboxPolicy)
   }
   ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
-  return `New file created successfully at: ${target.displayPath}`
+  return `New file created successfully at: ${posixDisplayPath(target.displayPath)}`
 }
 
 async function replaceInFile(
@@ -282,33 +310,54 @@ async function replaceInFile(
   const sandboxPolicy = policy.resolve(exec)
   const target = await resolveTarget(ctx, path, exec.signal)
   const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
-  const oldValue = requiredForCommand(oldStr, 'old_str', 'str_replace', false)
-  const newValue = newStr ?? ''
+  const oldRaw = requiredForCommand(oldStr, 'old_str', 'str_replace', false)
+  const newRaw = newStr ?? ''
   const info = await statExisting(ctx, target, 'str_replace', exec)
   if (info.type !== 'file') {
     throw new FsError(`cannot edit "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
   }
-  const before = await ctx.fs.readText(target, exec.signal)
-  const offsets = matchOffsets(before, oldValue)
-  const offset = offsets[0]
-  if (offset === undefined) {
+  const beforeRaw = await ctx.fs.readText(target, exec.signal)
+  const exactOffsets = matchOffsets(beforeRaw, oldRaw)
+  let after: string
+  const exactOffset = exactOffsets[0]
+  if (exactOffsets.length === 1 && exactOffset !== undefined) {
+    after = beforeRaw.slice(0, exactOffset) + newRaw + beforeRaw.slice(exactOffset + oldRaw.length)
+  } else if (exactOffsets.length > 1) {
+    const lines = lineNumbersAt(beforeRaw, exactOffsets)
     throw new FsError(
-      `No replacement was performed, old_str \`${oldValue}\` did not appear verbatim in ${target.displayPath}.`,
-      'FS_EDIT_NOT_FOUND',
-    )
-  }
-  if (offsets.length > 1) {
-    const lines = lineNumbersAt(before, offsets)
-    throw new FsError(
-      `No replacement was performed. Multiple occurrences of old_str \`${oldValue}\` in lines [${lines.join(', ')}]. Please ensure it is unique`,
+      `No replacement was performed. Multiple occurrences of old_str \`${oldRaw}\` in lines [${lines.join(', ')}]. Please ensure it is unique`,
       'FS_AMBIGUOUS_EDIT',
+    )
+  } else {
+    const lineEndings = detectLineEndings(beforeRaw)
+    const before = normalizeLineEndings(beforeRaw)
+    const oldValue = normalizeLineEndings(oldRaw)
+    const newValue = normalizeLineEndings(newRaw)
+    const offsets = matchOffsets(before, oldValue)
+    const offset = offsets[0]
+    if (offset === undefined) {
+      throw new FsError(
+        `No replacement was performed, old_str \`${oldRaw}\` did not appear verbatim in ${target.displayPath}.`,
+        'FS_EDIT_NOT_FOUND',
+      )
+    }
+    if (offsets.length > 1) {
+      const lines = lineNumbersAt(before, offsets)
+      throw new FsError(
+        `No replacement was performed. Multiple occurrences of old_str \`${oldRaw}\` in lines [${lines.join(', ')}]. Please ensure it is unique`,
+        'FS_AMBIGUOUS_EDIT',
+      )
+    }
+    after = restoreLineEndings(
+      before.slice(0, offset) + newValue + before.slice(offset + oldValue.length),
+      lineEndings,
     )
   }
   let outcome
   try {
     outcome = await ctx.fs.writeText(
       target,
-      before.slice(0, offset) + newValue + before.slice(offset + oldValue.length),
+      after,
       intent === undefined
         ? { kind: 'replaceIfVersion', version: info.version }
         : { kind: 'replaceIfVersion', version: intent.version },
@@ -319,7 +368,7 @@ async function replaceInFile(
     throw policy.mapError(error, sandboxPolicy)
   }
   ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
-  return `The file ${target.displayPath} has been edited successfully.`
+  return `The file ${posixDisplayPath(target.displayPath)} has been edited successfully.`
 }
 
 async function insertInFile(
@@ -331,7 +380,7 @@ async function insertInFile(
   exec: ToolRunContext,
 ): Promise<string> {
   if (insertLine === undefined) throw new Error('Parameter `insert_line` is required for command: insert')
-  const value = requiredForCommand(newStr, 'new_str', 'insert')
+  const value = normalizeLineEndings(requiredForCommand(newStr, 'new_str', 'insert'))
   const sandboxPolicy = policy.resolve(exec)
   const target = await resolveTarget(ctx, path, exec.signal)
   const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
@@ -339,18 +388,20 @@ async function insertInFile(
   if (info.type !== 'file') {
     throw new FsError(`cannot insert into "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
   }
-  const before = await ctx.fs.readText(target, exec.signal)
+  const beforeRaw = await ctx.fs.readText(target, exec.signal)
+  const lineEndings = detectLineEndings(beforeRaw)
+  const before = normalizeLineEndings(beforeRaw)
   const lines = before.split('\n')
   if (!Number.isInteger(insertLine) || insertLine < 0 || insertLine > lines.length) {
     throw new Error(
       `Invalid \`insert_line\` parameter: ${insertLine}. It should be within the range of lines of the file: [0, ${lines.length}]`,
     )
   }
-  const after = [
+  const after = restoreLineEndings([
     ...lines.slice(0, insertLine),
     ...value.split('\n'),
     ...lines.slice(insertLine),
-  ].join('\n')
+  ].join('\n'), lineEndings)
   const expected: FsWriteIntent = intent === undefined
     ? { kind: 'replaceIfVersion', version: info.version }
     : { kind: 'replaceIfVersion', version: intent.version }
@@ -361,7 +412,7 @@ async function insertInFile(
     throw policy.mapError(error, sandboxPolicy)
   }
   ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
-  return `The file ${target.displayPath} has been edited successfully.`
+  return `The file ${posixDisplayPath(target.displayPath)} has been edited successfully.`
 }
 
 interface ResolvedConfig {

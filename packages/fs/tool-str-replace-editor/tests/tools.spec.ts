@@ -52,6 +52,10 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
+function shown(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
 function call(ctx: Context, owner: Agent | undefined, args: unknown) {
   return ctx.tools.execute({
     signal: new AbortController().signal,
@@ -162,14 +166,14 @@ describe('tool-str-replace-editor', () => {
       command: 'create',
       path: sample,
       file_text: 'one\ntwo\nthree\n',
-    }))).toBe(`New file created successfully at: ${sample}`)
+    }))).toBe(`New file created successfully at: ${shown(sample)}`)
 
     expect(text(await call(ctx, owner, {
       command: 'view',
       path: sample,
       view_range: [2, -1],
     }))).toBe([
-      `Here's the content of ${sample} with line numbers (which has a total of 4 lines) with view_range=[2, -1]:`,
+      `Here's the content of ${shown(sample)} with line numbers (which has a total of 4 lines) with view_range=[2, -1]:`,
       '     2  two',
       '     3  three',
       '     4  ',
@@ -181,18 +185,18 @@ describe('tool-str-replace-editor', () => {
       path: sample,
       old_str: 'two',
       new_str: 'TWO',
-    }))).toBe(`The file ${sample} has been edited successfully.`)
+    }))).toBe(`The file ${shown(sample)} has been edited successfully.`)
     expect(text(await call(ctx, owner, {
       command: 'str_replace',
       path: sample,
       old_str: 'TWO',
-    }))).toBe(`The file ${sample} has been edited successfully.`)
+    }))).toBe(`The file ${shown(sample)} has been edited successfully.`)
     expect(text(await call(ctx, owner, {
       command: 'insert',
       path: sample,
       insert_line: 1,
       new_str: 'between',
-    }))).toBe(`The file ${sample} has been edited successfully.`)
+    }))).toBe(`The file ${shown(sample)} has been edited successfully.`)
     expect(await readFile(sample, 'utf8')).toBe('one\nbetween\n\nthree\n')
   })
 
@@ -273,10 +277,8 @@ describe('tool-str-replace-editor', () => {
     expect(listing).not.toContain('too-deep.txt')
     expect(listing).not.toContain('index.js')
     expect(listing).not.toContain('module.pyc')
-    // The listing carries absolute display paths; the POSIX-style substrings
-    // only match on Linux, so assert with platform separators.
-    expect(listing).toContain(join('node_modules_old', 'kept.js'))
-    expect(listing).toContain(join('__pycache__backup', 'kept.py'))
+    expect(listing).toContain('node_modules_old/kept.js')
+    expect(listing).toContain('__pycache__backup/kept.py')
 
     const clipped = await setup({ maxOutputChars: 10 })
     await writeFile(join(clipped.root, 'large.txt'), 'x'.repeat(100))
@@ -331,6 +333,39 @@ describe('tool-str-replace-editor', () => {
       new_str: 'three',
     })
     expect(await readFile(newline, 'utf8')).toBe('one\n\nthree')
+  })
+
+  it('matches LF old_str against a CRLF file and restores CRLF on write', async () => {
+    const { ctx, root, owner } = await setup()
+    const sample = join(root, 'crlf.txt')
+    await writeFile(sample, 'one\r\ntwo\r\nthree\r\n')
+    expect((await call(ctx, owner, {
+      command: 'str_replace',
+      path: sample,
+      old_str: 'one\ntwo',
+      new_str: 'ONE\nTWO',
+    })).isError).toBe(false)
+    expect(await readFile(sample, 'utf8')).toBe('ONE\r\nTWO\r\nthree\r\n')
+    expect((await call(ctx, owner, {
+      command: 'insert',
+      path: sample,
+      insert_line: 1,
+      new_str: 'between',
+    })).isError).toBe(false)
+    expect(await readFile(sample, 'utf8')).toBe('ONE\r\nbetween\r\nTWO\r\nthree\r\n')
+  })
+
+  it('does not rewrite an LF file that contains one CRLF line', async () => {
+    const { ctx, root, owner } = await setup()
+    const sample = join(root, 'mixed.txt')
+    await writeFile(sample, 'one\ntwo\r\nthree\n')
+    expect((await call(ctx, owner, {
+      command: 'str_replace',
+      path: sample,
+      old_str: 'two',
+      new_str: 'TWO',
+    })).isError).toBe(false)
+    expect(await readFile(sample, 'utf8')).toBe('one\nTWO\r\nthree\n')
   })
 
   it('uses old_str-only replacement failures and rejects relative paths', async () => {

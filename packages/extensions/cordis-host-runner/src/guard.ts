@@ -540,6 +540,52 @@ function assertRenderedContent(value: JsonValue): ContentBlock[] {
 }
 
 /**
+ * Hide `ctx` on the tool `exec` object and on `exec.agent`. The loop attaches
+ * the live Agent, whose `ctx` is the host Context; a sandboxed `execute` must
+ * not reach it.
+ * @param exec - the run object `ToolRegistry.execute` passes to `execute`.
+ * @returns a read-only façade, or `exec` unchanged when it is not a record.
+ */
+function sandboxExecFacade(exec: unknown): unknown {
+  if (!isPlainRecord(exec)) return exec
+  const hideCtx = (
+    raw: Record<string, unknown>,
+    label: string,
+    extra?: Record<string | symbol, unknown>,
+  ): unknown => {
+    const facade: unknown = new Proxy({}, {
+      get(_target, prop) {
+        if (prop === 'ctx') throw new Error(`${label} does not expose ctx`)
+        if (extra !== undefined && Object.hasOwn(extra, prop)) return extra[prop]
+        const value = raw[prop as string]
+        if (typeof value === 'function') {
+          const fn = value as (...a: unknown[]) => unknown
+          return (...a: unknown[]) => {
+            const res = fn.apply(raw, a)
+            return res === raw ? facade : res
+          }
+        }
+        return value
+      },
+      set() {
+        throw new Error(`${label} is read-only`)
+      },
+      has(_target, prop) {
+        return prop !== 'ctx' && (extra !== undefined && Object.hasOwn(extra, prop) || prop in raw)
+      },
+    })
+    return facade
+  }
+  const rawAgent = isPlainRecord(exec.agent) ? exec.agent : undefined
+  const agentFacade = rawAgent === undefined ? undefined : hideCtx(rawAgent, 'sandbox exec.agent')
+  return hideCtx(
+    exec,
+    'sandbox exec',
+    agentFacade === undefined ? undefined : { agent: agentFacade },
+  )
+}
+
+/**
  * The `harness.defineTool` handed into the sandbox: the real DSL, with `parameters` normalized
  * into a fresh host-realm ParameterSchemaSpec (raw object wrappers unwrapped,
  * required arrays mapped, and explicit DSL object openness enforced) and the tool's `execute` return normalized into the host realm
@@ -580,7 +626,7 @@ export function sandboxDefineTool(options: unknown): ToolDefinition {
       } : {},
     },
     async execute(args: unknown, exec: unknown): Promise<JsonValue> {
-      return cloneJson(await rawExecute(args, exec), 'harness.defineTool execute result') as JsonValue
+      return cloneJson(await rawExecute(args, sandboxExecFacade(exec)), 'harness.defineTool execute result') as JsonValue
     },
   })
   const parameters = { ...tool.parameters, ...normalized.rootAnnotations }

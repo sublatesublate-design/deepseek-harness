@@ -335,7 +335,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     let attempt: DynamicCordisRunAttempt
     if (requestId !== null) {
       const pending = this.registry.peekRequest(requestId)
-      if (pending === undefined || pending.pluginId !== pluginId || pending.packageId !== packageId || pending.mode !== mode) {
+      if (pending === undefined || pending.pluginId !== pluginId || pending.packageId !== packageId || pending.mode !== mode
+        || pending.agentId !== agent.id) {
         return { ok: false, message: `run request "${requestId}" does not authorize ${pluginId}/${packageId}` }
       }
       const latest = plan.plugin.latestRun
@@ -405,17 +406,19 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
   /**
    * Resolve one model-driven Client activation request.
+   * @param agent - Agent whose Session must own the pending request.
    * @param requestId - Request identity to settle once.
    * @param resolution - Browser refusal or exact Client activation result.
    * @returns Whether the still-pending request accepted this resolution.
    */
   @Remote('resolveRequestRun')
   async resolveRequestRun(
+    agent: Agent,
     requestId: ApprovalRequestId,
     resolution: DynamicCordisRunResolution,
   ): Promise<DynamicCordisResolveAck> {
     const pending = this.registry.peekRequest(requestId)
-    if (pending === undefined) return { accepted: false }
+    if (pending === undefined || pending.agentId !== agent.id) return { accepted: false }
     const plugin = this.registry.get(pending.pluginId)
     if (resolution.ok && plugin?.run?.pluginRunId !== resolution.pluginRunId) return { accepted: false }
     if (!resolution.ok && resolution.pluginRunId !== undefined

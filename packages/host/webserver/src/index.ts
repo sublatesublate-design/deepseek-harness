@@ -47,6 +47,11 @@ export interface Config {
   host: '127.0.0.1' | '0.0.0.0'
   /** Listen port; zero requests an OS-assigned port. */
   port: number
+  /**
+   * Required to bind `0.0.0.0`. Default false: a wildcard bind is a
+   * deliberate network exposure and must be opted into from config.
+   */
+  allowNonLoopback?: boolean
 }
 
 /**
@@ -60,6 +65,7 @@ export class WebServer extends Service {
   static Config: z<Config> = z.object({
     host: z.union([z.const('127.0.0.1'), z.const('0.0.0.0')]).required(),
     port: z.natural().max(65535).required(),
+    allowNonLoopback: z.boolean().default(false),
   })
 
   private readonly exact = new Map<string, WebRoute>()
@@ -146,6 +152,12 @@ export class WebServer extends Service {
 
   /** Listen; resolves once the socket is bound (rejection = FAILED fiber). */
   async [Service.init](): Promise<void> {
+    if (this.config.host === '0.0.0.0' && this.config.allowNonLoopback !== true) {
+      throw new Error('webserver: binding to 0.0.0.0 requires allowNonLoopback: true')
+    }
+    if (this.config.host === '0.0.0.0') {
+      this.ctx.logger.warn('webserver: binding to 0.0.0.0 allows remote access')
+    }
     const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
       requests; the field is only optional on the client-side IncomingMessage type */

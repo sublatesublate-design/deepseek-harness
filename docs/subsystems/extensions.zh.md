@@ -129,11 +129,12 @@ async run( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynam
 
 /**
  * Resolve one model-driven Client activation request.
+ * @param agent - Agent whose Session must own the pending request.
  * @param requestId - Request identity to settle once.
  * @param resolution - Browser refusal or exact Client activation result.
  * @returns Whether the still-pending request accepted this resolution.
  */
-@Remote('resolveRequestRun') async resolveRequestRun( requestId: ApprovalRequestId, resolution: DynamicCordisRunResolution, ): Promise<DynamicCordisResolveAck>
+@Remote('resolveRequestRun') async resolveRequestRun( agent: Agent, requestId: ApprovalRequestId, resolution: DynamicCordisRunResolution, ): Promise<DynamicCordisResolveAck>
 
 /**
  * Settle a direct panel run after this page loaded or failed its Client half.

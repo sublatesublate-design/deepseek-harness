@@ -6,6 +6,7 @@
  */
 
 import { FsError } from '@deepseek-ai/dsh-fs'
+import { posixDisplayPath } from './display-path.ts'
 
 /** Default maximum characters returned for a single line (the `readMaxLineLength` config). */
 export const READ_MAX_LINE_LENGTH = 2000
@@ -150,6 +151,7 @@ export async function buildWindow(
  * @returns the model-facing envelope: numbered lines plus a continuation or end-of-file footer.
  */
 export function formatReadOutput(displayPath: string, outcome: FileReadOutcome): string {
+  displayPath = posixDisplayPath(displayPath)
   const endLine = outcome.lines.at(-1)?.number ?? Math.max(0, outcome.offset - 1)
   let footer: string
   if (outcome.truncatedByBytes) {

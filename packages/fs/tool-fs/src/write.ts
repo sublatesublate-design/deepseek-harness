@@ -13,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
+import { posixDisplayPath } from './display-path.ts'
 import { sessionResolveOptions } from './session-cwd.ts'
 import type { FsSandboxController } from './sandbox.ts'
 
@@ -34,6 +35,7 @@ export function parseWriteArgs(args: { file_path: string; content: string }): { 
  * @returns the model-facing confirmation envelope (no file content is echoed back).
  */
 export function formatWriteOutput(displayPath: string, outcome: Pick<FsWriteOutcome, 'operation'>): string {
+  displayPath = posixDisplayPath(displayPath)
   const verb = outcome.operation === 'create' ? 'Created' : 'Updated'
   return `<path>${displayPath}</path>
 <type>file</type>

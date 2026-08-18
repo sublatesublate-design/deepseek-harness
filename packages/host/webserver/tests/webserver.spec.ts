@@ -85,6 +85,14 @@ async function upgrade(port: number, path: string): Promise<ReturnType<typeof co
   return socket
 }
 
+describe('wildcard bind', () => {
+  it('refuses 0.0.0.0 unless allowNonLoopback is true', async () => {
+    const ctx = new Context()
+    await expect(ctx.plugin(HttpServer, { host: '0.0.0.0', port: 0 }))
+      .rejects.toThrow(/allowNonLoopback/)
+  })
+})
+
 describe('real Loader composition', () => {
   // Real-Loader composition resolves workspace packages through tsx at test
   // time; first resolution after the host/client program split is slow enough

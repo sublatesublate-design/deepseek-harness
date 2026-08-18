@@ -6,7 +6,6 @@
  * always reaches the console, and the fiber owns the runner's teardown. Plus the two plane-level companions: the
  * node half's empty apply and the invariant registration.
  */
-/* oxlint-disable typescript/no-unsafe-assignment -- Vitest asymmetric matchers are typed as any. */
 
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
@@ -140,7 +139,7 @@ async function boot(): Promise<Bench> {
       return reportRefused.current ? Promise.reject(new Error('stream gone')) : answered(undefined)
     },
     getClientCode: () => answered(source.current),
-    resolveRequestRun: (requestId: string, resolution: unknown) => {
+    resolveRequestRun: (_agentId: string, requestId: string, resolution: unknown) => {
       resolved.push({ requestId, resolution })
       return answered({ accepted: true })
     },
@@ -152,7 +151,6 @@ async function boot(): Promise<Bench> {
     ) => {
       invoked.push({ pluginId, pluginRunId, method, args })
       const refusal = invokeThrow.current
-      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is a case under test
       if (refusal !== undefined) return Promise.reject(refusal)
       return answered(invokeResult.current)
     },

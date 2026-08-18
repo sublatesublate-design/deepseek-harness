@@ -21,6 +21,7 @@ import type {
   SubprocessTerminalHandle,
   SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
+import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import { childEnv, spawnSubprocess } from './spawn.ts'
 import type { LocalSubprocessHandle, SpawnInternals } from './spawn.ts'
 import { createProcessInspector } from './process-inspector.ts'
@@ -143,8 +144,22 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
       extensions.map(extension => resolve(process.cwd(), directory, command + extension)))
   }
 
+  private confinedSpec(spec: SubprocessSpawnSpec): SubprocessSpawnSpec {
+    const policy = spec.sandbox
+    if (policy === undefined || policy.mode === 'danger-full-access') return spec
+    const sandbox = this.ctx.get('sandbox')
+    if (sandbox === undefined) {
+      throw new Error('subprocess-local: confined spawn requires the sandbox service')
+    }
+    const confined = sandbox.confine(spec.argv, {
+      mode: policy.mode,
+      workspaceRoot: policy.workspaceRoot,
+    } satisfies SandboxPolicy)
+    return { ...spec, argv: confined.argv }
+  }
+
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
-    const handle = spawnSubprocess(spec, this.internals)
+    const handle = spawnSubprocess(this.confinedSpec(spec), this.internals)
     this.live.add(handle)
     // Release ownership only once the whole TREE is gone, not at direct-child
     // settlement — a TERM-trapping helper that outlives the leader must stay
@@ -157,7 +172,6 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
   }
 
   // Local PTY allocation is synchronous, but the provider contract permits remote asynchronous allocation.
-  // oxlint-disable-next-line typescript/require-await -- Preserve promise rejection semantics at the async provider contract.
   async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     const file = spec.argv[0]
     if (file === undefined || file.length === 0) {

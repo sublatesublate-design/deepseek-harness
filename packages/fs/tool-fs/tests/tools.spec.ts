@@ -25,6 +25,7 @@ import type {
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import { STREAM_MIN_SIZE } from '../src/read.ts'
+import { posixDisplayPath } from '../src/display-path.ts'
 import { formatReadOutput } from '../src/read-render.ts'
 import type { FileReadOutcome } from '../src/read-render.ts'
 import { sessionCwd } from '../src/session-cwd.ts'
@@ -364,6 +365,13 @@ describe('read tool', () => {
     const result = await call(ctx, 'read', { file_path: 'notes' })
     if (result.isError) throw new Error('expected read success')
     expect(result.meta).toEqual({ path: '/abs/notes', offset: 1, lines: [{ number: 1, text: 'plain' }], totalLines: 1 })
+  })
+})
+
+describe('posixDisplayPath', () => {
+  it('rewrites Windows separators and leaves POSIX paths unchanged', () => {
+    expect(posixDisplayPath('C:\\Users\\x\\file.txt')).toBe('C:/Users/x/file.txt')
+    expect(posixDisplayPath('/abs/notes')).toBe('/abs/notes')
   })
 })
 

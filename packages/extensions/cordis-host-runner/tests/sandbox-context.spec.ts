@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { CallId } from '@deepseek-ai/dsh-llm'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { call, CONTENT_OUTPUT_CODE, dummyTool, mount, setup, text } from './helpers.ts'
 
 /**
@@ -92,6 +94,45 @@ describe('sandbox context façade — escape surface is closed', () => {
     })()
     expect(message).toContain('returned a cordis Context, which the sandbox does not expose')
     expect(harness.ctx.tools.get('smuggled_via_service')).toBeUndefined()
+  })
+
+  it('denies access to agent.ctx through the tool execute exec parameter', async () => {
+    const harness = await setup()
+    await mount(harness, `
+      return {
+        name: 'exec-escape',
+        inject: ['tools'],
+        apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'probe_exec',
+            description: 'probes exec.agent.ctx',
+            parameters: {},
+            ${CONTENT_OUTPUT_CODE}
+            async execute(args, exec) {
+              try {
+                const c = exec.agent.ctx
+                return [{ type: 'text', text: 'escaped' }]
+              } catch (e) {
+                return [{ type: 'text', text: e.message }]
+              }
+            },
+          }))
+        },
+      }
+    `)
+    const result = await harness.ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: CallId('call-exec-escape'),
+      name: 'probe_exec',
+      arguments: {},
+      agent: {
+        id: 'S-fake',
+        session: {},
+        ctx: harness.ctx.root,
+      } as unknown as Agent,
+    })
+    expect(result.isError).toBe(false)
+    expect(text(result)).toContain('sandbox exec.agent does not expose ctx')
   })
 
   it('guards an async injected-service method: a host-realm Promise resolves through the guard', async () => {

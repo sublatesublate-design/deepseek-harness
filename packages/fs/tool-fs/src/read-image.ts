@@ -20,6 +20,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-fs'
+import { posixDisplayPath } from './display-path.ts'
 import { resolveRegularReadTarget } from './read-target.ts'
 
 /** Extensions `read_image` accepts; magic-byte validation at the attachment service stays authoritative. */
@@ -99,7 +100,8 @@ export function imageRefFromValue(image: ImageReadValue['image']): ImageAttachme
  * @returns the model-facing envelope; the image itself rides the adjacent image block.
  */
 export function formatImageReadOutput(displayPath: string, image: ImageReadValue['image']): string {
-  return `<path>${displayPath}</path>
+  const path = posixDisplayPath(displayPath)
+  return `<path>${path}</path>
 <type>image</type>
 <content>
 ${image.mediaType} image, ${image.width}x${image.height} px, ${image.bytes} bytes

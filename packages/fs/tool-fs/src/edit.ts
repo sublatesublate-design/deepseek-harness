@@ -12,6 +12,7 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
+import { posixDisplayPath } from './display-path.ts'
 import { sessionResolveOptions } from './session-cwd.ts'
 import type { FsSandboxController } from './sandbox.ts'
 
@@ -63,6 +64,7 @@ export function parseEditArgs(args: { file_path: string; old_string: string; new
  * @returns the confirmation sentence the model sees as the tool result.
  */
 export function formatEditOutput(displayPath: string, replaceAll: boolean): string {
+  displayPath = posixDisplayPath(displayPath)
   return replaceAll
     ? `The file ${displayPath} has been updated. All occurrences were successfully replaced.`
     : `The file ${displayPath} has been updated successfully.`

@@ -5,7 +5,6 @@
  * what is under test is the round trip itself — the engine has its own account in
  * runner.spec.
  */
-/* oxlint-disable typescript/no-unsafe-assignment -- Vitest asymmetric matchers are typed as any. */
 
 import { describe, expect, it, vi } from 'vitest'
 import type {
@@ -62,7 +61,7 @@ function boot(overrides: {
     getClientCode: vi.fn(overrides.clientCode ?? (() => Promise.resolve({
       code: 'return {}', name: 'demo', pluginId: PLUGIN, packageId: PACKAGE, pluginRunId: RUN,
     }))),
-    resolveRequestRun: vi.fn((_requestId: unknown, resolution: unknown) => {
+    resolveRequestRun: vi.fn((_agentId: unknown, _requestId: unknown, resolution: unknown) => {
       answers.push(resolution)
       return (overrides.resolve ?? (() => Promise.resolve({ accepted: true })))()
     }),
@@ -407,8 +406,6 @@ describe('startUserRun', () => {
   })
 
   it('records a load failure, stringifying a non-Error rejection', async () => {
-
-    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is the case under test
     const bench = boot({ loaded: () => Promise.reject('plain rejection') })
     await bench.orchestrator.startUserRun(DUAL)
     expect(bench.host.resolveRequestRun).not.toHaveBeenCalled()

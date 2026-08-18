@@ -35,10 +35,15 @@ interface Config {
   host: '127.0.0.1' | '0.0.0.0'
   /** Listen port; zero requests an OS-assigned port. */
   port: number
+  /**
+   * Required to bind `0.0.0.0`. Default false: a wildcard bind is a
+   * deliberate network exposure and must be opted into from config.
+   */
+  allowNonLoopback?: boolean
 }
 ```
 
-`host` 只接受 `127.0.0.1`（默认姿态）和 `0.0.0.0`（刻意的网络暴露）；没有 TLS、认证或 origin 策略，因此绑定到非回环地址会把服务器暴露给该网络。dist 位置是认领席位的前端插件的组装事实。
+`host` 只接受 `127.0.0.1`（默认姿态）和 `0.0.0.0`；绑定 `0.0.0.0` 还需要 `allowNonLoopback: true`。没有 TLS、认证或 origin 策略，因此绑定到非回环地址会把服务器暴露给该网络。dist 位置是认领席位的前端插件的组装事实。
 
 ## 服务
 
@@ -104,5 +109,5 @@ tapIndex(transform: (html: string) => string): () => void
 applyIndexTaps(html: string): string
 ```
 
-Source: [`packages/host/webserver/src/index.ts:59`](../../packages/host/webserver/src/index.ts)
+Source: [`packages/host/webserver/src/index.ts:64`](../../packages/host/webserver/src/index.ts)
 <!-- END GENERATED cordis-surface -->

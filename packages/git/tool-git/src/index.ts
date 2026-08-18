@@ -12,6 +12,7 @@ import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subpr
 import type { ToolExecution, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { defineTool, type GenericCallView, type PreToolDecision } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 
 export const name = 'tool-git'
 export const inject = ['tools', 'systemPrompt', 'subprocess']
@@ -108,6 +109,9 @@ async function runGit(
   const git = await ctx.subprocess.resolveExecutable('git', undefined, exec.signal)
   let settled: Awaited<ReturnType<typeof settle>>
   try {
+    const policy = ctx.get('sandboxPolicy')?.resolve(
+      exec.agent === undefined ? {} : { session: exec.agent.session },
+    )
     settled = await settle(ctx.subprocess.spawn({
       argv: [git, '--literal-pathspecs', ...argv],
       cwd: executionCwd(exec),
@@ -118,6 +122,7 @@ async function runGit(
       },
       graceMs: config.graceMs,
       signal: exec.signal,
+      ...policy === undefined ? {} : { sandbox: { mode: policy.mode, workspaceRoot: policy.workspaceRoot } },
     }))
   } catch (error: unknown) {
     if (exec.signal.aborted) throw new HarnessError('Git command was cancelled', 'GIT_ABORTED', { cause: error })

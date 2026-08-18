@@ -13,6 +13,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import * as readline from 'node:readline'
 import {
   DEFAULT_PROFILE_BUNDLES,
   initProfile,
@@ -49,24 +50,25 @@ function exportsPatch(packageName: string, profileDir: string): boolean {
  * already written the real installed names (so a git/path/tarball/alias spec
  * on the command line reconciles by its true package name) and materialized
  * the packages. A dependency that resolves to a `dsh.bundle`-declaring
- * package joins the layer stack (appended in dependency order); a
- * dependency-listed name that no longer does — removed, or the installed
- * version dropped the declaration — leaves it. In-box bundles from the
- * profile template are not dependencies and are never touched. Warns once
+ * package is offered as a new layer (appended in dependency order after an
+ * explicit TTY yes; a non-TTY install names the bundles and leaves them
+ * inactive). A dependency-listed name that no longer does — removed, or the
+ * installed version dropped the declaration — leaves it. In-box bundles from
+ * the profile template are not dependencies and are never touched. Warns once
  * per newly-added bundle-less dependency (a plain library is fine; the
  * warning is orientation).
  */
-function reconcilePlugins(before: ProfileManifest, profileDir: string): void {
+async function reconcilePlugins(before: ProfileManifest, profileDir: string): Promise<void> {
   const after = readProfileManifest(NAME, profileDir)
   const beforeDeps = new Set(Object.keys(before.dependencies ?? {}))
   const dependencies = Object.keys(after.dependencies ?? {})
   const plugins = after.dsh?.profile?.bundles ?? []
   let changed = false
+  const newBundles: string[] = []
   for (const packageName of dependencies) {
     const isBundle = exportsPatch(packageName, profileDir)
     if (isBundle && !plugins.includes(packageName)) {
-      plugins.push(packageName)
-      changed = true
+      newBundles.push(packageName)
     } else if (!isBundle && !beforeDeps.has(packageName)) {
       process.stderr.write(
         `${NAME}: warning: ${packageName} declares no dsh.bundle — installed as a plain dependency, not a profile layer `
@@ -74,6 +76,34 @@ function reconcilePlugins(before: ProfileManifest, profileDir: string): void {
       )
     }
   }
+
+  if (newBundles.length > 0) {
+    let confirm = false
+    const listed = newBundles.join(', ')
+    if (!process.stdin.isTTY) {
+      process.stderr.write(
+        `${NAME}: non-TTY environment, refusing to activate plugin bundles without confirmation: ${listed}\n`,
+      )
+    } else {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+      confirm = await new Promise<boolean>((resolve) => {
+        rl.question(
+          `Activate these plugin bundles?\n${newBundles.map(bundle => `  ${bundle}`).join('\n')}\n[y/N] `,
+          (answer) => {
+            rl.close()
+            resolve(answer.trim().toLowerCase() === 'y')
+          },
+        )
+      })
+    }
+    if (confirm) {
+      for (const bundle of newBundles) {
+        plugins.push(bundle)
+      }
+      changed = true
+    }
+  }
+
   const dependencySet = new Set(dependencies)
   for (const packageName of [...plugins]) {
     // Only dependency-managed entries are subject to removal; template
@@ -117,7 +147,7 @@ function anchorPathSpec(argument: string, cwd: string): string {
  * @param args - pnpm arguments with relative path specs anchored to the invoking directory.
  * @returns the pnpm exit code.
  */
-export function runPlugin(profile: string, args: readonly string[]): number {
+export async function runPlugin(profile: string, args: readonly string[]): Promise<number> {
   const dir = resolveProfileDir(profile)
   if (!existsSync(join(dir, 'package.json'))) {
     initProfile(dir, PROFILE_TEMPLATES[profile] ?? DEFAULT_PROFILE_BUNDLES)
@@ -141,7 +171,7 @@ export function runPlugin(profile: string, args: readonly string[]): number {
   }
   const exitCode = result.status ?? 1
   if (exitCode === 0) {
-    reconcilePlugins(before, dir)
+    await reconcilePlugins(before, dir)
   } else {
     // pnpm's own diagnostics name pnpm-workspace.yaml without saying WHICH
     // one; the profile owns it, and the commonest failure here is pnpm ≥10

@@ -25,6 +25,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 // Type-only: resolves ctx.sessionProjections / ctx.commands for the optional children.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-commands'
+import type {} from '@deepseek-ai/dsh-user-questions'
 import type { PermissionSelect, PresetOption } from './types.ts'
 
 // The `permissions` projection-key declaration lives in src/types.ts (its one
@@ -262,13 +263,35 @@ export class PermissionPresetService extends Service {
         // No settlement text labels its value with this command's own name: a
         // surface that renders `name · text` (the web command row) would
         // otherwise read `permission · Permission preset: workspace-write.`
-        handler: ({ agent, rawInput }) => {
+        handler: async ({ agent, rawInput }) => {
           const name = rawInput.trim()
           if (name === '') {
             return { kind: 'success', text: `current preset ${this.current(agent.session.events)} (available: ${this.names.join(', ')})` }
           }
           if (!this.names.includes(name)) {
             return { kind: 'error', text: `unknown preset "${name}" (available: ${this.names.join(', ')})` }
+          }
+          const spec = this.resolve(name)
+          if (spec.approval === 'never') {
+            const userQuestions = this.ctx.get('userQuestions')
+            if (userQuestions === undefined) {
+              return {
+                kind: 'error',
+                text: `refused preset switch to ${name}: confirmation is required and no question provider is mounted`,
+              }
+            }
+            const result = await userQuestions.ask({
+              questions: [{
+                id: 'confirm-danger',
+                question: `Switch to "${name}"? This preset disables approval prompts.`,
+                options: [{ label: 'Yes' }, { label: 'No' }],
+              }],
+              agent,
+            })
+            const answer = result.answers.find(item => item.id === 'confirm-danger')
+            if (answer?.selected[0] !== 'Yes') {
+              return { kind: 'error', text: `cancelled preset switch to ${name}` }
+            }
           }
           this.apply(agent.session, name, (policy) =>{  this.ctx.approval.setPolicy(agent, policy) })
           return { kind: 'success', text: `preset ${name}` }

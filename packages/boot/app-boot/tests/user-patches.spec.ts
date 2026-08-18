@@ -65,6 +65,18 @@ describe('loadOptionalPatches', () => {
     expect(patches?.[1]?.insert).toHaveLength(1)
   })
 
+  it('rejects !!js in a user patch file inside the task workspace', () => {
+    const dir = tmp()
+    writeFileSync(join(dir, PROFILE_PATCH_FILENAME), [
+      '- id: agent-loop',
+      '  config:',
+      '    model: !!js process.env.DSH_SPEC_MODEL',
+      '',
+    ].join('\n'))
+    expect(() => loadOptionalPatches(NAME, join(dir, PROFILE_PATCH_FILENAME), { workspaceRoot: dir }))
+      .toThrow(new RegExp(`^${NAME}: failed to parse patches `))
+  })
+
   it('fails loud on an unreadable file (a present user patch layer is never skipped)', () => {
     const dir = tmp()
     mkdirSync(join(dir, PROFILE_PATCH_FILENAME)) // a directory: present, unreadable as a file

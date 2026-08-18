@@ -35,10 +35,15 @@ interface Config {
   host: '127.0.0.1' | '0.0.0.0'
   /** Listen port; zero requests an OS-assigned port. */
   port: number
+  /**
+   * Required to bind `0.0.0.0`. Default false: a wildcard bind is a
+   * deliberate network exposure and must be opted into from config.
+   */
+  allowNonLoopback?: boolean
 }
 ```
 
-`host` accepts only `127.0.0.1` (default posture) and `0.0.0.0` (deliberate network exposure); there is no TLS, auth, or origin policy, so a non-loopback bind exposes the server to that network. The dist location is an assembly fact of the frontend plugin that claims the seat.
+`host` accepts only `127.0.0.1` (default posture) and `0.0.0.0`; binding `0.0.0.0` also requires `allowNonLoopback: true`. There is no TLS, auth, or origin policy, so a non-loopback bind exposes the server to that network. The dist location is an assembly fact of the frontend plugin that claims the seat.
 
 ## The service
 
@@ -104,5 +109,5 @@ tapIndex(transform: (html: string) => string): () => void
 applyIndexTaps(html: string): string
 ```
 
-Source: [`packages/host/webserver/src/index.ts:59`](../../packages/host/webserver/src/index.ts)
+Source: [`packages/host/webserver/src/index.ts:64`](../../packages/host/webserver/src/index.ts)
 <!-- END GENERATED cordis-surface -->

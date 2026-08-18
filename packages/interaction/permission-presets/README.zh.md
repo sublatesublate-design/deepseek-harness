@@ -10,7 +10,7 @@
 
 该服务要求存在具有约束能力的 `ctx.shell` 执行器和 `ctx.approval`。表中名为 `custom` 的条目会在加载时抛出异常。当组合默认值与任何 preset 都不匹配时，插件要求显式配置 `defaultPreset`；独立构造的零事件会话仍可能推导出 `custom`。详见[沙箱切换设计](../../../.agents/notes/implemented/feature/2026-07-06-sandbox.md)。
 
-两个可选子功能在同一服务之上提供产品界面：`permissions` 会话投影单元（`src/types.ts` 声明该 key；单元以组合默认值为基础折叠三个全量值可调参数事件，并生成选择器视图，其中包含表内选项和仅作当前值的 `custom`）与 `/permissionPresets` 命令（不带参数调用时报告当前预设与表；预设参数经 `set` 切换）。每个子功能仅在其注册表（`ctx.sessionProjections` / `ctx.commands`）被组合时激活。
+两个可选子功能在同一服务之上提供产品界面：`permissions` 会话投影单元（`src/types.ts` 声明该 key；单元以组合默认值为基础折叠三个全量值可调参数事件，并生成选择器视图，其中包含表内选项和仅作当前值的 `custom`）与 `/permission` 命令（不带参数调用时报告当前预设与表；预设参数经 `set` 切换）。切换到审批策略为 `never` 的预设前，命令会先询问 `ctx.userQuestions`；该服务缺席或答案不是 `Yes` 时拒绝切换。`set()` 本身不要求确认。每个子功能仅在其注册表（`ctx.sessionProjections` / `ctx.commands`）被组合时激活。
 
 ## 模型体验
 

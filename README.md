@@ -8,15 +8,17 @@ This project is not an official DeepSeek AI desktop product. The current feature
 
 ## Why this fork exists
 
-The original Harness experience is browser-first. That leaves three practical gaps for long-running desktop work: the agent lives inside a browser tab, a second window has no built-in session-state companion, and browser overlays cannot move outside the current viewport.
+The original Harness experience is browser-first. I wanted a version that is easier to keep running as an engineering workspace, with stronger local process control, safer project operations, clearer recovery behavior, and visible live status.
 
 ## What changed
 
-- **A native Desktop host:** Electron opens the existing Harness Web UI, sessions, models, tools, and plugin composition in a Windows or macOS application window.
-- **A live whale companion:** A transparent companion window follows the selected session and reflects thinking, tool calls, approvals, errors, and completed answers. Its session selection is synchronized with the main window.
-- **A readable real-time status layer:** High-frequency reasoning text is reduced to a stable thinking state; tool targets and answer tails remain bounded summaries instead of flooding the screen.
+- **Native Desktop application:** Electron reuses the Harness Web UI, sessions, model settings, tools, workspaces, and plugin composition instead of creating a second client. The managed service runs on `127.0.0.1:3081` with a fresh 256-bit control credential for each process; HTTP, RPC, and WebSocket requests require authentication, and the credential never enters URLs, page boot data, or logs. Windows and macOS launchers add single-instance focus, saved bounds, native menus, platform title bars, and application icons. Startup failures show the cause, a bounded log tail, the full log path, and a retry action.
+- **Coding-agent engineering workflow:** `git_status`, `git_diff`, `git_stage`, and `git_commit` require explicit paths and fresh human approval. Bounded project memory keeps only a small index in startup context and requires the agent to search and read relevant entries. Tool effect levels (`observe`, `interact`, `mutate`, and `orchestrate`) give the host a clear permission and recovery policy.
+- **Plugin fault containment:** Optional plugins run in a dedicated Cordis child Fiber. Import or activation failures are recorded and isolated so sibling plugins can continue; the inventory exposes diagnostics and retry. Plugins remain trusted local code, not a security sandbox.
+- **Crash recovery and approval safety:** Missing durable tool calls recover as `TOOL_NOT_STARTED`; calls without results recover as `TOOL_OUTCOME_UNKNOWN` instead of blindly repeating a possibly side-effecting operation. An unanswered approval expires only with an interrupted turn and is never replayed or inferred as granted.
+- **Live whale companion:** A transparent Desktop window follows the active session and reflects thinking, tool calls, approvals, errors, and completed answers. High-frequency reasoning is reduced to a stable thinking state, while tool targets and answer tails remain bounded summaries.
 
-These changes are aimed at people who keep an AI coding environment open for an entire project. The fork also adds managed local-service startup, recovery controls, explicit Git workflows, bounded project memory, and plugin-failure containment so the desktop process is easier to operate safely over time.
+The purpose is not to add a decorative pet to a browser page. It is to make Harness a desktop AI coding environment that can stay open for a project, recover clearly from failures, and keep high-impact actions visible to the human operator.
 
 ## Features in this branch
 

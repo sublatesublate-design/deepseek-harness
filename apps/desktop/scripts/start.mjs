@@ -48,6 +48,7 @@ const BUILD_INPUTS = [
 const REQUIRED_ARTIFACTS = [
   'apps/cli/lib/bin.js',
   'apps/desktop/lib/main.js',
+  'apps/desktop/lib/pet-preload.cjs',
   'apps/web/dist/index.html',
   'packages/client/connection/lib/index.js',
 ]

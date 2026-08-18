@@ -183,6 +183,9 @@
     - id: ui-layout
       name: '@deepseek-ai/dsh-client-ui-layout'
 
+    - id: ui-pet
+      name: '@deepseek-ai/dsh-client-ui-pet'
+
     - id: ui-sidebar
       name: '@deepseek-ai/dsh-client-ui-sidebar'
 

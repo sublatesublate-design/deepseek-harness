@@ -34,4 +34,11 @@ describe('desktop chrome', () => {
         </header>"
     `)
   })
+
+  it('marks standalone desktop pet window without mounting titlebar', () => {
+    mountDesktopChrome('?desktop=1&petOnly=1')
+    expect(document.body.dataset.dshPetOnly).toBe('true')
+    expect(document.body.dataset.dshDesktop).toBeUndefined()
+    expect(document.querySelector('[data-dsh-desktop-titlebar]')).toBeNull()
+  })
 })

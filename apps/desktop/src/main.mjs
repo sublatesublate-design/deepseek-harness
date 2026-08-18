@@ -1,6 +1,4 @@
-/** Native desktop process for the existing Harness web composition. */
-
-import { app, BrowserWindow, Menu, screen, shell } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, screen, shell, Tray } from 'electron'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -46,6 +44,9 @@ let harnessProcess
 let harnessProcessDone
 let removeHarnessOutputListeners
 let mainWindow
+let petWindow
+let petDragState
+let tray
 let launchInFlight = false
 let locale = 'en'
 let quitInFlight = false
@@ -258,6 +259,162 @@ async function showStartupFailure(window, error) {
   presentWindow(window, 'startup failure presented')
 }
 
+let petDocked = true
+
+function getDockedPosition() {
+  if (mainWindow === undefined || mainWindow.isDestroyed()) return undefined
+  const bounds = mainWindow.getBounds()
+  return {
+    x: Math.round(bounds.x + bounds.width - 260),
+    y: Math.round(bounds.y + bounds.height - 240),
+  }
+}
+
+function syncPetPosition() {
+  if (smokeTest || petWindow === undefined || petWindow.isDestroyed() || !petDocked) return
+  if (mainWindow === undefined || mainWindow.isDestroyed() || mainWindow.isMinimized()) {
+    petWindow.hide()
+    return
+  }
+  const pos = getDockedPosition()
+  if (pos !== undefined) {
+    petWindow.setPosition(pos.x, pos.y)
+    if (mainWindow.isVisible() && !petWindow.isVisible()) {
+      petWindow.showInactive()
+    }
+  }
+}
+
+function petWindowFromEvent(event) {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  return window !== undefined && window === petWindow && !window.isDestroyed() ? window : undefined
+}
+
+ipcMain.on('dsh-pet-drag-start', event => {
+  const window = petWindowFromEvent(event)
+  if (window === undefined) return
+  const cursor = screen.getCursorScreenPoint()
+  const [windowX, windowY] = window.getPosition()
+  petDragState = {
+    window,
+    offsetX: cursor.x - windowX,
+    offsetY: cursor.y - windowY,
+  }
+})
+
+ipcMain.on('dsh-pet-drag-move', event => {
+  if (petDragState === undefined || petWindowFromEvent(event) !== petDragState.window) return
+  const cursor = screen.getCursorScreenPoint()
+  petDragState.window.setPosition(
+    Math.round(cursor.x - petDragState.offsetX),
+    Math.round(cursor.y - petDragState.offsetY),
+  )
+})
+
+ipcMain.on('dsh-pet-drag-end', event => {
+  if (petDragState !== undefined && petWindowFromEvent(event) === petDragState.window) petDragState = undefined
+})
+
+async function ensurePetWindow() {
+  if (smokeTest) return
+  if (petWindow !== undefined && !petWindow.isDestroyed()) {
+    if (!petWindow.isVisible()) petWindow.showInactive()
+    return
+  }
+
+  const dockedPos = getDockedPosition()
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
+
+  const initialX = dockedPos?.x ?? Math.max(0, screenWidth - 320)
+  const initialY = dockedPos?.y ?? Math.max(0, screenHeight - 280)
+
+  const petWin = new BrowserWindow({
+    width: 320,
+    height: 280,
+    x: initialX,
+    y: initialY,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    type: process.platform === 'win32' ? 'toolbar' : 'panel',
+    title: 'DeepSeek Desktop Pet',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      // Sandboxed Electron preloads must stay CommonJS; the main process can
+      // remain ESM while this narrow bridge is loaded by the renderer.
+      preload: join(desktopRoot, 'lib', 'pet-preload.cjs'),
+    },
+  })
+  petWindow = petWin
+  installControlCredential(petWin)
+  petWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  petWin.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+
+  petWin.on('moved', () => {
+    if (mainWindow === undefined || mainWindow.isDestroyed()) return
+    const currentPos = petWin.getPosition()
+    const targetDock = getDockedPosition()
+    if (targetDock !== undefined) {
+      const distance = Math.hypot(currentPos[0] - targetDock.x, currentPos[1] - targetDock.y)
+      if (distance > 50) {
+        petDocked = false
+      } else {
+        petDocked = true
+        syncPetPosition()
+      }
+    }
+  })
+
+  petWin.on('close', () => {
+    if (petDragState?.window === petWin) petDragState = undefined
+    petWindow = undefined
+  })
+
+  try {
+    await petWin.loadURL(`${origin}/?desktop=1&petOnly=1&platform=${platformQuery}`)
+    if (!petWin.isDestroyed()) {
+      petWin.showInactive()
+      syncPetPosition()
+      recordLog('pet-window', 'persistent desktop companion pet window mounted')
+    }
+  } catch (error) {
+    recordLog('pet-window', `failed to load companion pet window: ${String(error)}`)
+    if (petWindow === petWin) petWindow = undefined
+    if (!petWin.isDestroyed()) petWin.destroy()
+  }
+}
+
+function dockPetToMainWindow() {
+  petDocked = true
+  if (petWindow === undefined || petWindow.isDestroyed()) {
+    void ensurePetWindow()
+  } else {
+    syncPetPosition()
+    if (!petWindow.isVisible()) petWindow.showInactive()
+  }
+}
+
+async function createOrTogglePetWindow() {
+  if (petWindow !== undefined && !petWindow.isDestroyed()) {
+    if (petWindow.isVisible()) {
+      petWindow.hide()
+    } else {
+      petWindow.showInactive()
+      if (petDocked) syncPetPosition()
+    }
+    return
+  }
+  await ensurePetWindow()
+}
+
 /** Start or reload the local app while retaining the native recovery window on failure. */
 async function loadApplication(window, restart = false) {
   if (launchInFlight || window.isDestroyed()) return false
@@ -268,6 +425,7 @@ async function loadApplication(window, restart = false) {
     await ensureHarnessServer()
     await window.loadURL(`${origin}/?desktop=1&platform=${platformQuery}`)
     presentWindow(window, 'application presented')
+    void ensurePetWindow()
     return true
   } catch (error) {
     await showStartupFailure(window, error)
@@ -315,6 +473,12 @@ async function createWindow() {
     }
   })
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  window.on('move', () => syncPetPosition())
+  window.on('resize', () => syncPetPosition())
+  window.on('minimize', () => { if (petDocked && petWindow !== undefined && !petWindow.isDestroyed()) petWindow.hide() })
+  window.on('restore', () => { if (petDocked && petWindow !== undefined && !petWindow.isDestroyed()) { syncPetPosition(); petWindow.showInactive() } })
+  window.on('show', () => { if (petDocked && petWindow !== undefined && !petWindow.isDestroyed()) { syncPetPosition(); petWindow.showInactive() } })
+  window.on('hide', () => { if (petDocked && petWindow !== undefined && !petWindow.isDestroyed()) petWindow.hide() })
   window.on('close', event => {
     saveWindowState(window)
     if (process.platform !== 'darwin' && !shutdownComplete && processIsRunning(harnessProcess)) {
@@ -330,6 +494,48 @@ async function createWindow() {
   }
 }
 
+function installTray() {
+  if (smokeTest) return
+  try {
+    if (!existsSync(iconPath)) return
+    tray = new Tray(iconPath)
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: locale === 'zh-CN' ? '打开主窗口' : 'Open Main Window',
+        click: () => {
+          if (mainWindow !== undefined) presentWindow(mainWindow, 'tray clicked')
+        },
+      },
+      {
+        label: locale === 'zh-CN' ? '吸附桌宠回主窗口' : 'Dock Pet to Main Window',
+        click: () => {
+          dockPetToMainWindow()
+        },
+      },
+      {
+        label: locale === 'zh-CN' ? '切换桌面宠物 (Ctrl+Shift+P)' : 'Toggle Desktop Pet (Ctrl+Shift+P)',
+        click: () => {
+          void createOrTogglePetWindow()
+        },
+      },
+      { type: 'separator' },
+      {
+        label: locale === 'zh-CN' ? '退出' : 'Quit',
+        click: () => {
+          app.quit()
+        },
+      },
+    ])
+    tray.setToolTip('DeepSeek Desktop')
+    tray.setContextMenu(contextMenu)
+    tray.on('double-click', () => {
+      if (mainWindow !== undefined) presentWindow(mainWindow, 'tray double-clicked')
+    })
+  } catch (error) {
+    recordLog('desktop', `could not install tray: ${String(error)}`)
+  }
+}
+
 /** Preserve the standard macOS application shortcuts while Windows uses the in-page chrome. */
 function installApplicationMenu() {
   if (process.platform !== 'darwin') {
@@ -339,6 +545,16 @@ function installApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: app.name, submenu: [
       { role: 'about' }, { type: 'separator' }, { role: 'services' }, { type: 'separator' },
+      {
+        label: locale === 'zh-CN' ? '吸附桌宠回主窗口' : 'Dock Pet to Main Window',
+        click: () => { dockPetToMainWindow() },
+      },
+      {
+        label: locale === 'zh-CN' ? '切换独立桌面宠物' : 'Toggle Desktop Pet',
+        accelerator: 'CommandOrControl+Shift+P',
+        click: () => { void createOrTogglePetWindow() },
+      },
+      { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' },
     ] },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
@@ -419,6 +635,16 @@ if (!ownsInstance) {
     locale = app.getLocale().toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
     recordLog('desktop', `Electron ready (${locale})`)
     installApplicationMenu()
+    installTray()
+    if (!smokeTest) {
+      try {
+        globalShortcut.register('CommandOrControl+Shift+P', () => {
+          void createOrTogglePetWindow()
+        })
+      } catch (error) {
+        recordLog('desktop', `could not register globalShortcut: ${String(error)}`)
+      }
+    }
     if (process.platform === 'darwin') app.dock.setIcon(iconPath)
     await createWindow()
   }).catch((error) => {
@@ -433,6 +659,13 @@ if (!ownsInstance) {
     if (process.platform !== 'darwin') app.quit()
   })
   app.on('before-quit', event => {
+    try {
+      globalShortcut.unregisterAll()
+      tray?.destroy()
+      tray = undefined
+    } catch {
+      // safe cleanup on shutdown
+    }
     if (shutdownComplete || configuredUrl !== undefined || !processIsRunning(harnessProcess)) return
     event.preventDefault()
     if (quitInFlight) return

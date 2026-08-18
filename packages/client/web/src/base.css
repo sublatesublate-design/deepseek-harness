@@ -27,6 +27,56 @@ body[data-dsh-desktop='true'] #root {
   margin-top: var(--dsh-desktop-titlebar-height);
 }
 
+/* Standalone floating desktop pet window */
+body[data-dsh-pet-only='true'],
+html:has(body[data-dsh-pet-only='true']) {
+  background: transparent !important;
+  background-color: transparent !important;
+  overflow: hidden !important;
+  user-select: none;
+}
+
+body[data-dsh-pet-only='true'] #root,
+body[data-dsh-pet-only='true'] [class*='frame'],
+body[data-dsh-pet-only='true'] [class*='Col'] {
+  height: 100% !important;
+  margin-top: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body[data-dsh-pet-only='true'] .dsh-desktop-titlebar,
+body[data-dsh-pet-only='true'] [class*='sidebarCol'],
+body[data-dsh-pet-only='true'] [class*='centerCol'],
+body[data-dsh-pet-only='true'] [class*='detailsCol'],
+body[data-dsh-pet-only='true'] [class*='handle'] {
+  display: none !important;
+}
+
+body[data-dsh-pet-only='true'] [data-pet-state] {
+  position: absolute !important;
+  left: 50% !important;
+  top: 60% !important;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.18));
+}
+
+body[data-dsh-pet-only='true'] [data-shell-overlay] > * {
+  display: none !important;
+}
+
+body[data-dsh-pet-only='true'] [data-shell-overlay] > [data-pet-embedded='true'],
+body[data-dsh-pet-only='true'] [data-shell-overlay] > :has([data-pet-embedded='true']) {
+  display: block !important;
+}
+
+/* In desktop main window, hide embedded pet so the single persistent floating companion owns it */
+body[data-dsh-desktop='true']:not([data-dsh-pet-only='true']) [data-pet-embedded='true'] {
+  display: none !important;
+}
+
 .dsh-desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;

@@ -11,6 +11,11 @@ export function mountDesktopChrome(search = window.location.search): void {
   const params = new URLSearchParams(search)
   if (params.get(DESKTOP_PARAM) !== '1') return
 
+  if (params.get('petOnly') === '1') {
+    document.body.dataset.dshPetOnly = 'true'
+    return
+  }
+
   document.body.dataset.dshDesktop = 'true'
   const platform = params.get(PLATFORM_PARAM)
   if (platform !== null) document.body.dataset.dshDesktopPlatform = platform

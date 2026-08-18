@@ -27,6 +27,7 @@
   },
   "files": [
     "lib/*.js",
+    "lib/*.cjs",
     "assets"
   ]
 }

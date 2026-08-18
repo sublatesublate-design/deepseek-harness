@@ -1,0 +1,47 @@
+.pet {
+  position: fixed;
+  z-index: 4;
+  width: 120px;
+  height: 130px;
+  padding: 0;
+  border: 0;
+  border-radius: 34px;
+  color: inherit;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: transform var(--ds-transition-duration-fast) var(--ds-ease-out);
+}
+
+.pet:hover {
+  transform: translateY(-2px) scale(1.025);
+}
+
+.pet:focus-visible {
+  outline: 2px solid var(--dsw-alias-border-active);
+  outline-offset: 2px;
+}
+
+.pet[data-dragging] {
+  cursor: grabbing;
+  transform: scale(1.035);
+}
+
+.sprite {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background-image: var(--pet-atlas);
+  background-repeat: no-repeat;
+  background-size: 800% 1100%;
+  background-position: var(--pet-x) var(--pet-y);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet {
+    transition: none;
+  }
+}

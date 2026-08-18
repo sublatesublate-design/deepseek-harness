@@ -7,6 +7,8 @@
  * hashed class map, and the css text auto-injects a <style data-plugin="<id>">
  * tag at factory execution (the loader removes plugin-owned tags on unload).
  * The virtual loader registers each real stylesheet as a watch dependency.
+ * PNG and WebP imports become watched data-URL modules so remotely fetched UI
+ * plugin bundles do not depend on separately deployed asset paths.
  */
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -23,6 +25,12 @@ import { PLATFORM_MODULES } from './web/src/platform.ts'
  */
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
+const RASTER_VIRTUAL_PREFIX = '\0dsh-raster:'
+const RASTER_VIRTUAL_SUFFIX = '.mjs'
+const RASTER_MIME = new Map([
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+])
 
 /**
  * Wire/type layers a client bundle may inline: browser-safe contracts
@@ -222,6 +230,24 @@ function clientConfig(id: string, entry: string): UserConfig {
           `client bundle purity: "${source}" is not a platform module (CLIENT_EXTERNALS), an inline-safe wire layer, or a generated /remote contribution — `
           + 'cross-plugin value imports are forbidden; collaborate through cordis services (type-only imports are erased and never reach this gate)',
         )
+      },
+    }, {
+      name: 'dsh-raster-assets-inline',
+      resolveId(source: string, importer: string | undefined) {
+        const extension = [...RASTER_MIME.keys()].find(candidate => source.endsWith(candidate))
+        if (extension === undefined) return null
+        const abs = importer !== undefined ? sourceAssetPath(source, importer) : source
+        return RASTER_VIRTUAL_PREFIX + abs + RASTER_VIRTUAL_SUFFIX
+      },
+      async load(virtualId: string) {
+        if (!virtualId.startsWith(RASTER_VIRTUAL_PREFIX)) return null
+        const fileId = virtualId.slice(RASTER_VIRTUAL_PREFIX.length, -RASTER_VIRTUAL_SUFFIX.length)
+        const extension = [...RASTER_MIME.keys()].find(candidate => fileId.endsWith(candidate))
+        const mime = extension === undefined ? undefined : RASTER_MIME.get(extension)
+        if (mime === undefined) throw new Error(`client bundle raster asset: unsupported file ${fileId}`)
+        this.addWatchFile(fileId)
+        const source = await readFile(fileId)
+        return `export default ${JSON.stringify(`data:${mime};base64,${source.toString('base64')}`)};`
       },
     }, {
       name: 'dsh-css-modules-inline',

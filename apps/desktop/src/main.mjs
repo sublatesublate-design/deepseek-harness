@@ -13,6 +13,7 @@ import {
   renderStartupProgress,
   restoreWindowBounds,
 } from './startup-support.mjs'
+import { handleDesktopNavigation } from './navigation-policy.mjs'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
 const desktopRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -457,20 +458,21 @@ async function createWindow() {
   mainWindow = window
   installControlCredential(window)
   window.webContents.setWindowOpenHandler(({ url }) => {
-    const protocol = new URL(url).protocol
-    if (protocol === 'https:' || protocol === 'http:') void shell.openExternal(url)
+    try {
+      const target = new URL(url)
+      if (target.protocol === 'https:' || target.protocol === 'http:') void shell.openExternal(target.href)
+    } catch (_malformedWindowOpenUrl) {
+      // Every new window is denied; a malformed destination has no external action.
+    }
     return { action: 'deny' }
   })
   window.webContents.on('will-navigate', (event, url) => {
-    if (url === 'dsh-desktop://retry') {
-      event.preventDefault()
-      void loadApplication(window, true)
-      return
-    }
-    if (url === 'dsh-desktop://open-log') {
-      event.preventDefault()
-      shell.showItemInFolder(logFile)
-    }
+    handleDesktopNavigation(event, url, {
+      origin,
+      retry: () => { void loadApplication(window, true) },
+      openLog: () => { shell.showItemInFolder(logFile) },
+      openExternal: target => { void shell.openExternal(target) },
+    })
   })
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   window.on('move', () => syncPetPosition())

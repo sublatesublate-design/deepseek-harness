@@ -268,7 +268,7 @@ describe('approve', () => {
       ok: false,
       reason: 'host-half-failed',
       message: 'socket closed',
-      stack: expect.any(String),
+      stack: expect.any(String) as unknown,
     }])
   })
 
@@ -279,7 +279,7 @@ describe('approve', () => {
     expect(bench.load).not.toHaveBeenCalled()
     expect(bench.answers).toEqual([{
       ok: false, reason: 'client-half-failed', pluginRunId: RUN, startedHere: true,
-      message: 'definition vanished', stack: expect.any(String),
+      message: 'definition vanished', stack: expect.any(String) as unknown,
     }])
   })
 
@@ -300,7 +300,7 @@ describe('approve', () => {
     await bench.orchestrator.approve(REQ, false)
     expect(bench.answers).toEqual([{
       ok: false, reason: 'client-half-failed', pluginRunId: RUN, startedHere: true,
-      message: 'evaluate: module table missing', stack: expect.any(String),
+      message: 'evaluate: module table missing', stack: expect.any(String) as unknown,
     }])
   })
 
@@ -401,11 +401,12 @@ describe('startUserRun', () => {
         packageId: PACKAGE,
         reason: 'client-half-failed',
         message: 'gone',
-        stack: expect.any(String),
+        stack: expect.any(String) as unknown,
       })
   })
 
   it('records a load failure, stringifying a non-Error rejection', async () => {
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Exercises normalization of a non-Error client loader rejection.
     const bench = boot({ loaded: () => Promise.reject('plain rejection') })
     await bench.orchestrator.startUserRun(DUAL)
     expect(bench.host.resolveRequestRun).not.toHaveBeenCalled()

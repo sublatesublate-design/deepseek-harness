@@ -20,7 +20,7 @@ type LineEndings = 'LF' | 'CRLF'
 
 /**
  * Same majority-of-first-4k rule as `dsh-fs-local` `detectLineEndings`: one
- * stray CRLF in an LF file must not rewrite the whole file.
+ * stray CRLF in an LF file must not select CRLF for newly supplied text.
  */
 function detectLineEndings(raw: string): LineEndings {
   const sample = raw.slice(0, 4096)
@@ -33,8 +33,53 @@ function normalizeLineEndings(content: string): string {
   return content.replaceAll('\r\n', '\n')
 }
 
-function restoreLineEndings(content: string, lineEndings: LineEndings): string {
-  return lineEndings === 'LF' ? content : normalizeLineEndings(content).split('\n').join('\r\n')
+function withLineEndings(content: string, lineEndings: LineEndings): string {
+  const normalized = normalizeLineEndings(content)
+  return lineEndings === 'LF' ? normalized : normalized.replaceAll('\n', '\r\n')
+}
+
+/**
+ * Translate one normalized UTF-16 range back to raw UTF-16 offsets without
+ * retaining a whole-file offset map.
+ */
+function rawOffsetsForNormalizedRange(raw: string, start: number, end: number): [number, number] {
+  let rawOffset = 0
+  let normalizedOffset = 0
+  let rawStart: number | undefined
+  while (true) {
+    if (normalizedOffset === start) rawStart = rawOffset
+    if (normalizedOffset === end) {
+      if (rawStart === undefined) throw new Error('normalized edit range is invalid')
+      return [rawStart, rawOffset]
+    }
+    if (rawOffset >= raw.length) throw new Error('normalized edit range is invalid')
+    rawOffset += raw[rawOffset] === '\r' && raw[rawOffset + 1] === '\n' ? 2 : 1
+    normalizedOffset += 1
+  }
+}
+
+/**
+ * Raw JS-string offset of the start of logical line `lineIndex` (0-based) in `raw`.
+ * Logical lines are counted with `\r\n` and `\n` each as a single terminator.
+ * A `lineIndex` at or past the end returns `raw.length`.
+ */
+function rawOffsetForLine(raw: string, lineIndex: number): number {
+  if (lineIndex <= 0) return 0
+  let terminatorsSeen = 0
+  let offset = 0
+  while (offset < raw.length) {
+    if (terminatorsSeen === lineIndex) return offset
+    if (raw[offset] === '\r' && raw[offset + 1] === '\n') {
+      offset += 2
+      terminatorsSeen += 1
+    } else if (raw[offset] === '\n') {
+      offset += 1
+      terminatorsSeen += 1
+    } else {
+      offset += 1
+    }
+  }
+  return offset
 }
 
 function posixDisplayPath(path: string): string {
@@ -329,10 +374,8 @@ async function replaceInFile(
       'FS_AMBIGUOUS_EDIT',
     )
   } else {
-    const lineEndings = detectLineEndings(beforeRaw)
     const before = normalizeLineEndings(beforeRaw)
     const oldValue = normalizeLineEndings(oldRaw)
-    const newValue = normalizeLineEndings(newRaw)
     const offsets = matchOffsets(before, oldValue)
     const offset = offsets[0]
     if (offset === undefined) {
@@ -348,10 +391,9 @@ async function replaceInFile(
         'FS_AMBIGUOUS_EDIT',
       )
     }
-    after = restoreLineEndings(
-      before.slice(0, offset) + newValue + before.slice(offset + oldValue.length),
-      lineEndings,
-    )
+    const [rawStart, rawEnd] = rawOffsetsForNormalizedRange(beforeRaw, offset, offset + oldValue.length)
+    const newForFile = withLineEndings(newRaw, detectLineEndings(beforeRaw))
+    after = beforeRaw.slice(0, rawStart) + newForFile + beforeRaw.slice(rawEnd)
   }
   let outcome
   try {
@@ -380,7 +422,7 @@ async function insertInFile(
   exec: ToolRunContext,
 ): Promise<string> {
   if (insertLine === undefined) throw new Error('Parameter `insert_line` is required for command: insert')
-  const value = normalizeLineEndings(requiredForCommand(newStr, 'new_str', 'insert'))
+  const value = requiredForCommand(newStr, 'new_str', 'insert')
   const sandboxPolicy = policy.resolve(exec)
   const target = await resolveTarget(ctx, path, exec.signal)
   const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
@@ -389,7 +431,6 @@ async function insertInFile(
     throw new FsError(`cannot insert into "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
   }
   const beforeRaw = await ctx.fs.readText(target, exec.signal)
-  const lineEndings = detectLineEndings(beforeRaw)
   const before = normalizeLineEndings(beforeRaw)
   const lines = before.split('\n')
   if (!Number.isInteger(insertLine) || insertLine < 0 || insertLine > lines.length) {
@@ -397,11 +438,19 @@ async function insertInFile(
       `Invalid \`insert_line\` parameter: ${insertLine}. It should be within the range of lines of the file: [0, ${lines.length}]`,
     )
   }
-  const after = restoreLineEndings([
-    ...lines.slice(0, insertLine),
-    ...value.split('\n'),
-    ...lines.slice(insertLine),
-  ].join('\n'), lineEndings)
+  const lineEndings = detectLineEndings(beforeRaw)
+  const newline = lineEndings === 'CRLF' ? '\r\n' : '\n'
+  const valueForFile = withLineEndings(value, lineEndings)
+  let after: string
+  if (insertLine === lines.length) {
+    after = beforeRaw + newline + valueForFile
+  } else {
+    const rawInsertOffset = rawOffsetForLine(beforeRaw, insertLine)
+    after = beforeRaw.slice(0, rawInsertOffset)
+      + valueForFile
+      + newline
+      + beforeRaw.slice(rawInsertOffset)
+  }
   const expected: FsWriteIntent = intent === undefined
     ? { kind: 'replaceIfVersion', version: info.version }
     : { kind: 'replaceIfVersion', version: intent.version }

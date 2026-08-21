@@ -368,6 +368,39 @@ describe('tool-str-replace-editor', () => {
     expect(await readFile(sample, 'utf8')).toBe('one\nTWO\r\nthree\n')
   })
 
+  it('preserves mixed line endings and UTF-16 offsets at edit boundaries', async () => {
+    const { ctx, root, owner } = await setup()
+    const replacement = join(root, 'mixed-unicode.txt')
+    await writeFile(replacement, '前😀\r\none\r\ntwo\n尾\r\n')
+    expect((await call(ctx, owner, {
+      command: 'str_replace',
+      path: replacement,
+      old_str: 'one\ntwo',
+      new_str: 'ONE\nTWO',
+    })).isError).toBe(false)
+    expect(await readFile(replacement, 'utf8')).toBe('前😀\r\nONE\r\nTWO\n尾\r\n')
+
+    const trailing = join(root, 'trailing.txt')
+    await writeFile(trailing, 'one\n')
+    expect((await call(ctx, owner, {
+      command: 'insert',
+      path: trailing,
+      insert_line: 1,
+      new_str: 'X',
+    })).isError).toBe(false)
+    expect(await readFile(trailing, 'utf8')).toBe('one\nX\n')
+
+    const empty = join(root, 'empty-insert.txt')
+    await writeFile(empty, '')
+    expect((await call(ctx, owner, {
+      command: 'insert',
+      path: empty,
+      insert_line: 0,
+      new_str: 'X',
+    })).isError).toBe(false)
+    expect(await readFile(empty, 'utf8')).toBe('X\n')
+  })
+
   it('uses old_str-only replacement failures and rejects relative paths', async () => {
     const { ctx, root, owner } = await setup()
     const ambiguous = join(root, 'ambiguous.txt')

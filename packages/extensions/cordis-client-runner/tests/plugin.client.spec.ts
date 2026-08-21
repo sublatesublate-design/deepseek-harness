@@ -151,6 +151,7 @@ async function boot(): Promise<Bench> {
     ) => {
       invoked.push({ pluginId, pluginRunId, method, args })
       const refusal = invokeThrow.current
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Exercises normalization of a non-Error transport rejection.
       if (refusal !== undefined) return Promise.reject(refusal)
       return answered(invokeResult.current)
     },
@@ -306,7 +307,7 @@ describe('browser half', () => {
       failure: {
         slot: 'root',
         message: 'your entry in slot "root" crashed while React rendered it: Cannot read properties of undefined',
-        stack: expect.any(String),
+        stack: expect.any(String) as unknown,
         abdicated: true,
       },
     }])

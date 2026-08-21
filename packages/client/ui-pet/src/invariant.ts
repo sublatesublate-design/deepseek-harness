@@ -12,7 +12,9 @@ export const name = 'client-ui-pet-invariant'
 export const inject = ['invariants']
 
 /** The package owns only browser-local animation and one disposable slot registration. */
-const install: InvariantInstaller = () => {}
+const install: InvariantInstaller = () => {
+  // No runtime invariant: browser state has no authoritative host relationship to inspect.
+}
 
 /**
  * Register this package's invariant companion.

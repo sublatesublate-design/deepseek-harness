@@ -18,10 +18,11 @@ Status: implemented
 - **P8.** `harness.defineTool` 的 `execute` 收到只读门面，访问 `exec.ctx` 或 `exec.agent.ctx` 会抛错。inject 仍是“宿主半边已声明的服务”；没有硬编码服务白名单。
 - **P10.** `dsh plugin` 仅在 TTY 下得到明确 yes 后才激活新安装的 bundle。非 TTY 安装会列出这些 bundle 并保持未激活。
 - **W2.** 面向模型的工具输出通过 `posixDisplayPath` 使用 POSIX 分隔符。点名后端 `displayPath` 的错误文本保持后端原拼写。
-- **W3.** `str_replace_editor` 先按原文匹配 `old_str`，使混合换行文件仍能区分。原文未命中时，再将文件与搜索文本规范为 LF 后匹配，并按前 4 KiB 的多数换行写回——与 `dsh-fs-local` 的 `editText` 相同。单个 CRLF 行不会把 LF 文件整份改成 CRLF。
+- **W3.** `str_replace_editor` 先按原文匹配 `old_str`，使混合换行文件仍能区分。原文未命中时，将文件与搜索文本规范为 LF，只把命中的 UTF-16 范围映射回原文偏移，并仅对替换文本应用前 4 KiB 的多数换行。插入使用原文逻辑行偏移与同一换行选择。未编辑区间保留原始字节，包括混合 CRLF/LF 边界与末尾空行。
 - **P4.** `runHostHalf` 与 `resolveRequestRun` 要求 `pending.agentId === agent.id`。Client Remote 传入该 agent id；编排器 `approve(requestId, future)` 的 arity 不变。
 - **P5.** 位于任务工作区或平台临时目录下的用户补丁文件按不含 `!!js` 的方言解析。这些根之外的 home／profile 文件仍可做 `process.env` 插值。`--patch` overlay 仍受信任。启动不会仅因配置目录落在可写根内就拒绝。
-- **P7.** `SubprocessSpawnSpec.sandbox` 是按次策略。`LocalSubprocessRuntime` 在其存在且不是 `danger-full-access` 时做 confine；`ctx.sandbox` 缺席则抛错。`tool-git` 传入已解析策略。未标记的受信任 spawn 仍不confine。
+- **P7.** `SubprocessSpawnSpec.sandbox` 与 `SubprocessTerminalSpawnSpec.sandbox` 携带按次策略及可选会话身份。提供方必须实施受限策略，否则拒绝。`LocalSubprocessRuntime` 是普通与终端 spawn 唯一的本地限制归属方；终端分配会在包装前验证原始 argv、取消状态与规范化 cwd。`tool-git` 和 `terminal-bash` 传入已解析策略。未标记的受信任 spawn 仍不受限；E2B 在实现前拒绝受限策略。
+- **P11.** 仅当解析后的 origin 与受管应用 origin 相等时，桌面主 renderer 才保留顶层导航。其他 HTTP(S) 目标交给外部浏览器，其他 scheme 一律拒绝；原生恢复操作要求 URL 完全等于 `dsh-desktop://retry` 或 `dsh-desktop://open-log`。
 - **B4.** `git_commit` 已通过 `tools/pre-execute` 询问。`tool-bash` 对 `git commit`、`git push` 和 `git reset --hard` 走同一条路径。命令字符串匹配仍可被绕过；该残留由本笔记记录。
 
 下列补丁仍不存在：

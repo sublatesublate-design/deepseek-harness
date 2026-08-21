@@ -1778,9 +1778,13 @@ describe('E2BSubprocessRuntime', () => {
   })
 
   it('validates synchronous spawn preconditions', async () => {
-    const { ctx } = await service()
+    const { ctx, fiber } = await service()
     expect(() => ctx.subprocess.spawn(spec({ argv: [] }))).toThrow(/non-empty program/)
     expect(() => ctx.subprocess.spawn(spec({ signal: AbortSignal.abort('stop') }))).toThrow(/aborted before spawn/)
+    expect(() => ctx.subprocess.spawn(spec({
+      sandbox: { mode: 'workspace-write', workspaceRoot: '/workspace' },
+    }))).toThrow(/per-call file policy "workspace-write" is not implemented/)
+    await fiber.dispose()
   })
 
   it('registers the package-owned empty invariant installer', async () => {

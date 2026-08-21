@@ -188,7 +188,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
         res.end('forbidden')
         return
       }
-      if (rejectRemoteApiPeer(ctx.webServer.host, req.socket?.remoteAddress)) {
+      if (rejectRemoteApiPeer(ctx.webServer.host, req.socket.remoteAddress)) {
         res.writeHead(403)
         res.end('forbidden')
         return
@@ -216,7 +216,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
             rejectWebSocketUpgrade(socket)
             return
           }
-          if (rejectRemoteApiPeer(apiCtx.webServer.host, req.socket?.remoteAddress)) {
+          if (rejectRemoteApiPeer(apiCtx.webServer.host, req.socket.remoteAddress)) {
             rejectWebSocketUpgrade(socket, 403)
             return
           }

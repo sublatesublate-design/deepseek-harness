@@ -122,7 +122,7 @@ async function runGit(
       },
       graceMs: config.graceMs,
       signal: exec.signal,
-      ...policy === undefined ? {} : { sandbox: { mode: policy.mode, workspaceRoot: policy.workspaceRoot } },
+      ...policy === undefined ? {} : { sandbox: policy },
     }))
   } catch (error: unknown) {
     if (exec.signal.aborted) throw new HarnessError('Git command was cancelled', 'GIT_ABORTED', { cause: error })

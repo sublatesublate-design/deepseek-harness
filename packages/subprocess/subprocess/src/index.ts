@@ -93,6 +93,8 @@ declare module '@deepseek-ai/cordis' {
  *   quiescence.
  * - Disposal of the service terminates all still-running managed processes
  *   and awaits their exit.
+ * - A confined per-call file policy is enforced in the provider's execution
+ *   world or rejected before allocation; it is never silently ignored.
  * - {@link spawnTerminal} owns terminal allocation, text transport,
  *   foreground groups, signalling, and whole-session quiescence behind one
  *   awaited termination method; readiness and persistent-shell policy stay

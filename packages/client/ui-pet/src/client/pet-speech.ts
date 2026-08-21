@@ -12,20 +12,21 @@ export interface ResolvedSpeech {
 /** Safely extract human-readable tool target details (file name, command, query). */
 function extractToolTarget(argsRaw: string): string | null {
   try {
-    const parsed = JSON.parse(argsRaw) as Record<string, unknown>
+    const parsed: unknown = JSON.parse(argsRaw)
     if (typeof parsed === 'object' && parsed !== null) {
-      const file = parsed.TargetFile ?? parsed.AbsolutePath ?? parsed.SearchPath ?? parsed.DirectoryPath ?? parsed.file ?? parsed.path
+      const args = parsed as Record<string, unknown>
+      const file = args.TargetFile ?? args.AbsolutePath ?? args.SearchPath ?? args.DirectoryPath ?? args.file ?? args.path
       if (typeof file === 'string') {
         const normalized = file.replace(/\\/g, '/')
         const parts = normalized.split('/')
         return parts[parts.length - 1] || file
       }
-      const cmd = parsed.CommandLine ?? parsed.command ?? parsed.cmd
+      const cmd = args.CommandLine ?? args.command ?? args.cmd
       if (typeof cmd === 'string') {
         const trimmed = cmd.trim()
         return trimmed.length > 28 ? `${trimmed.slice(0, 25)}...` : trimmed
       }
-      const query = parsed.Query ?? parsed.query
+      const query = args.Query ?? args.query
       if (typeof query === 'string') {
         const trimmed = query.trim()
         return `"${trimmed.length > 20 ? `${trimmed.slice(0, 17)}...` : trimmed}"`
@@ -65,12 +66,15 @@ export function resolvePetSpeech(
 ): ResolvedSpeech {
   // 1. Error / Failure state
   if (
-    session?.removed === true
-    || session?.openState === 'error'
-    || (session?.promptError !== null && session?.promptError !== undefined)
-    || (session?.lastAgentError !== null && session?.lastAgentError !== undefined)
+    session !== undefined
+    && (
+      session.removed
+      || session.openState === 'error'
+      || session.promptError !== null
+      || session.lastAgentError !== null
+    )
   ) {
-    const errorMsg = session?.lastAgentError || session?.promptError?.error?.message
+    const errorMsg = session.lastAgentError || session.promptError?.error.message
     if (typeof errorMsg === 'string' && errorMsg.trim().length > 0) {
       const clean = errorMsg.replace(/^(Error:\s*)+/, '').trim()
       const snippet = clean.length > 35 ? `${clean.slice(0, 32)}...` : clean
@@ -80,7 +84,7 @@ export function resolvePetSpeech(
   }
 
   // 2. Pending approval / user question
-  if ((session?.pending?.length ?? 0) > 0 || summary?.pendingInteraction !== undefined) {
+  if ((session?.pending.length ?? 0) > 0 || summary?.pendingInteraction !== undefined) {
     return { key: 'speech.waitingApproval' }
   }
 
@@ -91,7 +95,7 @@ export function resolvePetSpeech(
 
   // 4. Running tools or model generation (real-time streaming synchronization)
   if (session?.running === true || summary?.running === true || activity === 'running') {
-    const runningCall = session?.runningCalls?.[0]
+    const runningCall = session?.runningCalls[0]
     if (runningCall !== undefined) {
       const name = runningCall.name
       const target = extractToolTarget(runningCall.argsRaw)

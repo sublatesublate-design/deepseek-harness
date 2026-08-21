@@ -8,9 +8,9 @@
  * @module @deepseek-ai/dsh-subprocess-local
  */
 
-import { constants } from 'node:fs'
+import { constants, realpathSync, statSync } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
-import { delimiter, extname, isAbsolute, resolve } from 'node:path'
+import { delimiter, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import * as nodePty from 'node-pty'
 import type { IPtyForkOptions } from 'node-pty'
@@ -21,7 +21,7 @@ import type {
   SubprocessTerminalHandle,
   SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
-import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import { type SandboxPolicy, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import { childEnv, spawnSubprocess } from './spawn.ts'
 import type { LocalSubprocessHandle, SpawnInternals } from './spawn.ts'
 import { createProcessInspector } from './process-inspector.ts'
@@ -144,18 +144,53 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
       extensions.map(extension => resolve(process.cwd(), directory, command + extension)))
   }
 
-  private confinedSpec(spec: SubprocessSpawnSpec): SubprocessSpawnSpec {
+  private confinedArgv(
+    spec: Pick<SubprocessSpawnSpec, 'argv' | 'sandbox'>,
+    subject: 'spawn' | 'terminal spawn',
+  ): readonly string[] {
     const policy = spec.sandbox
-    if (policy === undefined || policy.mode === 'danger-full-access') return spec
+    if (policy === undefined || policy.mode === 'danger-full-access') return spec.argv
     const sandbox = this.ctx.get('sandbox')
     if (sandbox === undefined) {
-      throw new Error('subprocess-local: confined spawn requires the sandbox service')
+      throw new Error(`subprocess-local: confined ${subject} requires the sandbox service`)
     }
-    const confined = sandbox.confine(spec.argv, {
+    return sandbox.confine(spec.argv, {
+      ...policy,
       mode: policy.mode,
-      workspaceRoot: policy.workspaceRoot,
-    } satisfies SandboxPolicy)
-    return { ...spec, argv: confined.argv }
+    } satisfies SandboxPolicy).argv
+  }
+
+  private confinedSpec(spec: SubprocessSpawnSpec): SubprocessSpawnSpec {
+    const argv = this.confinedArgv(spec, 'spawn')
+    return argv === spec.argv ? spec : { ...spec, argv }
+  }
+
+  private confinedTerminalSpec(spec: SubprocessTerminalSpawnSpec): SubprocessTerminalSpawnSpec {
+    const policy = spec.sandbox
+    if (policy === undefined || policy.mode === 'danger-full-access') return spec
+    if (!isAbsolute(spec.cwd)) {
+      throw new Error('subprocess-local: confined terminal cwd must be absolute')
+    }
+    let cwd: string
+    try {
+      if (!statSync(spec.cwd).isDirectory()) {
+        throw new Error('not a directory')
+      }
+      cwd = realpathSync.native(spec.cwd)
+    } catch {
+      throw new Error(`subprocess-local: confined terminal cwd ${JSON.stringify(spec.cwd)} must be an existing directory`)
+    }
+    const roots = writableRoots({ ...policy, mode: 'workspace-write' })
+    const allowed = roots.some((root) => {
+      const relation = relative(root, cwd)
+      return relation === '' || (relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation))
+    })
+    if (!allowed) {
+      throw new Error(
+        `subprocess-local: confined terminal cwd ${JSON.stringify(spec.cwd)} is outside the workspace and temp roots`,
+      )
+    }
+    return { ...spec, argv: this.confinedArgv(spec, 'terminal spawn'), cwd }
   }
 
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
@@ -171,30 +206,37 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     return handle
   }
 
-  // Local PTY allocation is synchronous, but the provider contract permits remote asynchronous allocation.
-  async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
-    const file = spec.argv[0]
-    if (file === undefined || file.length === 0) {
-      throw new Error('subprocess-local: terminal argv must contain a program')
-    }
-    spec.signal?.throwIfAborted()
-    const options: IPtyForkOptions = {
-      name: 'dumb',
-      rows: spec.rows,
-      cols: spec.cols,
-      cwd: spec.cwd,
-      env: childEnv(spec.env),
-    }
-    const inspector = this.terminalInspector ?? createProcessInspector()
-    const terminal = nodePty.spawn(file, [...spec.argv.slice(1)], options)
-    const handle = new LocalTerminalHandle(terminal, inspector, spec.graceMs)
-    this.terminals.add(handle)
-    const release = async (): Promise<void> => {
-      await handle.terminate()
-      this.terminals.delete(handle)
-    }
-    void handle.done.then(release, release).catch(() => {})
-    return handle
+  spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
+    return Promise.resolve().then(() => {
+      const program = spec.argv[0]
+      if (program === undefined || program.length === 0) {
+        throw new Error('subprocess-local: terminal argv must contain a program')
+      }
+      spec.signal?.throwIfAborted()
+      const confined = this.confinedTerminalSpec(spec)
+      confined.signal?.throwIfAborted()
+      const file = confined.argv[0]
+      if (file === undefined || file.length === 0) {
+        throw new Error('subprocess-local: sandbox returned an empty terminal argv')
+      }
+      const options: IPtyForkOptions = {
+        name: 'dumb',
+        rows: confined.rows,
+        cols: confined.cols,
+        cwd: confined.cwd,
+        env: childEnv(confined.env),
+      }
+      const inspector = this.terminalInspector ?? createProcessInspector()
+      const terminal = nodePty.spawn(file, [...confined.argv.slice(1)], options)
+      const handle = new LocalTerminalHandle(terminal, inspector, confined.graceMs)
+      this.terminals.add(handle)
+      const release = async (): Promise<void> => {
+        await handle.terminate()
+        this.terminals.delete(handle)
+      }
+      void handle.done.then(release, release).catch(() => {})
+      return handle
+    })
   }
 }
 

@@ -126,15 +126,8 @@ interface SubprocessSpawnSpec {
    * tombstone that removes an ordinary ambient entry from the child.
    */
   env?: NodeJS.ProcessEnv | undefined
-  /**
-   * Per-call file-effect policy from the consumer's `sandboxPolicy.resolve`.
-   * When present and not `danger-full-access`, the local runtime confines
-   * argv through `ctx.sandbox` or throws if that service is absent.
-   */
-  sandbox?: {
-    mode: 'read-only' | 'workspace-write' | 'danger-full-access'
-    workspaceRoot: string
-  } | undefined
+  /** Per-call file-effect policy; the provider must enforce it or reject the spawn. */
+  sandbox?: SandboxExecutionPolicy | undefined
 }
 ```
 
@@ -249,9 +242,9 @@ interface SubprocessOutcome {
 
 ## 终端进程原语
 
-`spawnTerminal(spec)` 是非管道进程原语。提供方分配控制终端，并负责 UTF-8 文本传输、前台进程组检查与信号发送，以及一项须等待的 TERM→KILL 操作；该操作会使提供方仍可观察到的每个会话成员完全停稳，提供方则会记录执行基底特有的可观察性限制。PTY 后端仍负责提示符检测、就绪推断、scrollback、沙箱策略和持久会话所有权；普通 `spawn()` 无法重建控制终端语义。
+`spawnTerminal(spec)` 是非管道进程原语。提供方分配控制终端，并负责 UTF-8 文本传输、前台进程组检查与信号发送、文件策略实施，以及一项须等待的 TERM→KILL 操作；该操作会使提供方仍可观察到的每个会话成员完全停稳，提供方则会记录执行基底特有的可观察性限制。PTY 后端仍负责提示符检测、就绪推断、scrollback、策略解析和持久会话所有权；普通 `spawn()` 无法重建控制终端语义。
 
-终端 spec 完全指定 argv、cwd、环境覆盖、尺寸、清理宽限期与可选的分配取消。其句柄公开 `pid`、有序输出、`done`、`write`、`inspectForeground`、`signalForeground` 和须等待的 `terminate`；确切的公共形状生成到 [`ctx.subprocess` 服务目录](#ctxsubprocess--subprocessruntime-abstract-seam)中。
+终端 spec 完全指定 argv、cwd、环境覆盖、尺寸、清理宽限期、可选的分配取消与可选的按次文件策略。提供方必须在自身执行世界中实施受限策略，否则拒绝分配。其句柄公开 `pid`、有序输出、`done`、`write`、`inspectForeground`、`signalForeground` 和须等待的 `terminate`；确切的公共形状生成到 [`ctx.subprocess` 服务目录](#ctxsubprocess--subprocessruntime-abstract-seam)中。
 
 ## 服务行为
 
@@ -295,6 +288,7 @@ Implementations must honor these semantics:
 - Collect-mode readers are offset-based and non-consuming, so independent readers never consume one another's output; lossy reads report truncation and the spill file holding the complete stream when one exists. Piped streams are handed to the caller raw and never buffered here.
 - SubprocessHandle.terminate (and the spec's abort signal) escalates SIGTERM→grace→SIGKILL — the only termination verb — tree-scoped on every platform. SubprocessHandle.waitForExit observes whole-tree liveness, so a consumer-owned teardown ladder can hold each tier on real quiescence.
 - Disposal of the service terminates all still-running managed processes and awaits their exit.
+- A confined per-call file policy is enforced in the provider's execution world or rejected before allocation; it is never silently ignored.
 - spawnTerminal owns terminal allocation, text transport, foreground groups, signalling, and whole-session quiescence behind one awaited termination method; readiness and persistent-shell policy stay in the PTY consumer. Its output stream ends after queued terminal output when the top-level process exits.
 
 ```ts cordis-catalog
@@ -329,5 +323,5 @@ abstract spawn(spec: SubprocessSpawnSpec): SubprocessHandle
 abstract spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle>
 ```
 
-Source: [`packages/subprocess/subprocess/src/index.ts:102`](../../packages/subprocess/subprocess/src/index.ts)
+Source: [`packages/subprocess/subprocess/src/index.ts:104`](../../packages/subprocess/subprocess/src/index.ts)
 <!-- END GENERATED cordis-surface -->

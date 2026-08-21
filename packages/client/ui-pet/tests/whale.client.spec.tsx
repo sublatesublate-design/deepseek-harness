@@ -14,6 +14,8 @@ function conversation(overrides: Record<string, unknown> = {}) {
     promptError: null,
     lastAgentError: null,
     pending: [],
+    runningCalls: [],
+    partial: null,
     running: false,
     ...overrides,
   }

@@ -126,15 +126,8 @@ interface SubprocessSpawnSpec {
    * tombstone that removes an ordinary ambient entry from the child.
    */
   env?: NodeJS.ProcessEnv | undefined
-  /**
-   * Per-call file-effect policy from the consumer's `sandboxPolicy.resolve`.
-   * When present and not `danger-full-access`, the local runtime confines
-   * argv through `ctx.sandbox` or throws if that service is absent.
-   */
-  sandbox?: {
-    mode: 'read-only' | 'workspace-write' | 'danger-full-access'
-    workspaceRoot: string
-  } | undefined
+  /** Per-call file-effect policy; the provider must enforce it or reject the spawn. */
+  sandbox?: SandboxExecutionPolicy | undefined
 }
 ```
 
@@ -249,9 +242,9 @@ interface SubprocessOutcome {
 
 ## Terminal-process primitive
 
-`spawnTerminal(spec)` is the non-pipe process primitive. The provider allocates the controlling terminal and owns UTF-8 text transport, foreground-process-group inspection and signalling, and one awaited TERM-to-KILL operation that reaches quiescence for every session member the provider can still observe; providers document substrate-specific observability limits. The PTY backend remains responsible for prompt detection, readiness inference, scrollback, sandbox policy, and persistent-session ownership; ordinary `spawn()` cannot reconstruct controlling-terminal semantics.
+`spawnTerminal(spec)` is the non-pipe process primitive. The provider allocates the controlling terminal and owns UTF-8 text transport, foreground-process-group inspection and signalling, file-policy enforcement, and one awaited TERM-to-KILL operation that reaches quiescence for every session member the provider can still observe; providers document substrate-specific observability limits. The PTY backend remains responsible for prompt detection, readiness inference, scrollback, policy resolution, and persistent-session ownership; ordinary `spawn()` cannot reconstruct controlling-terminal semantics.
 
-The terminal spec fully specifies argv, cwd, environment overrides, dimensions, cleanup grace, and optional allocation cancellation. Its handle exposes `pid`, ordered output, `done`, `write`, `inspectForeground`, `signalForeground`, and awaited `terminate`; the exact public shapes are generated into the [`ctx.subprocess` service catalog](#ctxsubprocess--subprocessruntime-abstract-seam).
+The terminal spec fully specifies argv, cwd, environment overrides, dimensions, cleanup grace, optional allocation cancellation, and an optional per-call file policy. A provider enforces a confined policy in its execution world or rejects allocation. Its handle exposes `pid`, ordered output, `done`, `write`, `inspectForeground`, `signalForeground`, and awaited `terminate`; the exact public shapes are generated into the [`ctx.subprocess` service catalog](#ctxsubprocess--subprocessruntime-abstract-seam).
 
 ## Service behavior
 
@@ -295,6 +288,7 @@ Implementations must honor these semantics:
 - Collect-mode readers are offset-based and non-consuming, so independent readers never consume one another's output; lossy reads report truncation and the spill file holding the complete stream when one exists. Piped streams are handed to the caller raw and never buffered here.
 - SubprocessHandle.terminate (and the spec's abort signal) escalates SIGTERM→grace→SIGKILL — the only termination verb — tree-scoped on every platform. SubprocessHandle.waitForExit observes whole-tree liveness, so a consumer-owned teardown ladder can hold each tier on real quiescence.
 - Disposal of the service terminates all still-running managed processes and awaits their exit.
+- A confined per-call file policy is enforced in the provider's execution world or rejected before allocation; it is never silently ignored.
 - spawnTerminal owns terminal allocation, text transport, foreground groups, signalling, and whole-session quiescence behind one awaited termination method; readiness and persistent-shell policy stay in the PTY consumer. Its output stream ends after queued terminal output when the top-level process exits.
 
 ```ts cordis-catalog
@@ -329,5 +323,5 @@ abstract spawn(spec: SubprocessSpawnSpec): SubprocessHandle
 abstract spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle>
 ```
 
-Source: [`packages/subprocess/subprocess/src/index.ts:102`](../../packages/subprocess/subprocess/src/index.ts)
+Source: [`packages/subprocess/subprocess/src/index.ts:104`](../../packages/subprocess/subprocess/src/index.ts)
 <!-- END GENERATED cordis-surface -->

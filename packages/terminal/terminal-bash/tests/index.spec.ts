@@ -110,16 +110,16 @@ function registerStubLocalBackend(ctx: Context, createSession: () => LocalPtySes
 }
 
 describe('BashTerminalBackend startup rollback', () => {
-  it('rejects pre-aborted setup and empty sandbox argv', async () => {
+  it('rejects pre-aborted setup before requesting a terminal', async () => {
     const ctx = new Context()
-    await ctx.plugin(EmptySandbox)
     await ctx.plugin(SandboxPolicyService, { mode: 'read-only', workspaceRoot: '/tmp' })
-    const backend = new BashTerminalBackend(ctx, config(), async () => terminalHandle())
+    const spawnTerminal = vi.fn(async () => terminalHandle())
+    const backend = new BashTerminalBackend(ctx, config(), spawnTerminal)
     const controller = new AbortController()
     const abortReason = new Error('spawn aborted')
     controller.abort(abortReason)
     await expect(backend.spawn(spec(agent(ctx), controller.signal))).rejects.toBe(abortReason)
-    await expect(backend.spawn(spec(agent(ctx)))).rejects.toThrow('empty argv')
+    expect(spawnTerminal).not.toHaveBeenCalled()
   })
 
   it('closes failed startup and aggregates cleanup failure', async () => {
@@ -201,11 +201,12 @@ describe('BashTerminalBackend startup rollback', () => {
     }
 
     expect(spawned).toMatchObject({
-      argv: ['/sandbox', '--', '/bin/bash', '-i'],
+      argv: ['/bin/bash', '-i'],
       cols: 80,
       rows: 24,
       cwd: '/work',
       graceMs: 10,
+      sandbox: { mode: 'workspace-write', workspaceRoot: '/workspace' },
       env: {
         TERM: 'dumb', PAGER: 'cat', GIT_PAGER: 'cat', PS1: 'dsh> ', BASH_SILENCE_DEPRECATION_WARNING: '1',
         DSH_SHELL: '1', DSH_SESSION_ID: 'agent', DSH_PTY_SESSION_ID: 'pty-1',
@@ -213,10 +214,7 @@ describe('BashTerminalBackend startup rollback', () => {
     })
     expect(spawned?.env?.PTY_TEST_SECRET).toBeUndefined()
     expect(initialized).toHaveBeenCalledWith(undefined)
-    expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
-      argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: '/workspace' },
-    }])
+    expect((ctx.sandbox as RecordingSandbox).calls).toEqual([])
   })
 
   it('resolves session mode and root together before wrapping the shell', async () => {
@@ -242,27 +240,31 @@ describe('BashTerminalBackend startup rollback', () => {
     expect(await backend.spawn(spec(owner))).toBe(session)
 
     expect(spawned).toMatchObject({
-      argv: ['/sandbox', '--', '/bin/bash', '-i'],
-      cwd: '/session-workspace',
-    })
-    expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: '/session-workspace' },
-    }])
+      cwd: '/session-workspace',
+      sandbox: { mode: 'workspace-write', workspaceRoot: '/session-workspace' },
+    })
+    expect((ctx.sandbox as RecordingSandbox).calls).toEqual([])
   })
 
-  it('rejects a confined spawn without a sandbox provider', async () => {
+  it('leaves confined-policy enforcement to the subprocess provider', async () => {
     const confinedCtx = new Context()
     await confinedCtx.plugin(SandboxPolicyService, { mode: 'workspace-write', workspaceRoot: '/workspace' })
+    let spawned: SubprocessTerminalSpawnSpec | undefined
     const confined = new BashTerminalBackend(
       confinedCtx,
       config(),
-      async () => { throw new Error('terminal spawn must not run') },
+      async (spawnSpec) => {
+        spawned = spawnSpec
+        return terminalHandle()
+      },
       () => stubLocalSession(),
     )
-    await expect(confined.spawn(spec(agent(confinedCtx)))).rejects.toThrow(
-      'sandbox mode "workspace-write" requires a ctx.sandbox provider in the execution world',
-    )
+    await confined.spawn(spec(agent(confinedCtx)))
+    expect(spawned).toMatchObject({
+      argv: ['/bin/bash'],
+      sandbox: { mode: 'workspace-write', workspaceRoot: '/workspace' },
+    })
   })
 
   it('forwards terminal allocation cancellation directly', async () => {

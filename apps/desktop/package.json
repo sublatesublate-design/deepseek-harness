@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsdown",
     "launch": "electron .",
-    "start": "pnpm --workspace-root run desktop",
+    "start": "node scripts/start.mjs",
     "test:built": "node tests/desktop-smoke.mjs"
   },
   "license": "MIT",

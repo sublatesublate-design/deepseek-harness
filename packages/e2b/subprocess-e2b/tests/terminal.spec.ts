@@ -822,6 +822,14 @@ describe('E2B subprocess terminal service', () => {
     await explicit.dispose()
   })
 
+  it('rejects confined file policies that the remote provider cannot enforce', async () => {
+    const { ctx, fiber } = await service()
+    await expect(ctx.subprocess.spawnTerminal(spec({
+      sandbox: { mode: 'read-only', workspaceRoot: '/workspace' },
+    }))).rejects.toThrow(/per-call file policy "read-only" is not implemented/)
+    await fiber.dispose()
+  })
+
   it('owns live terminals through service disposal', async () => {
     const { ctx, fiber, fake } = await service()
     const terminal = await ctx.subprocess.spawnTerminal(spec({ signal: new AbortController().signal }))

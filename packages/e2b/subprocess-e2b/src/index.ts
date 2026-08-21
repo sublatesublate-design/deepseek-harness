@@ -48,6 +48,14 @@ function requireRepresentableGrace(graceMs: number): void {
   }
 }
 
+function rejectUnsupportedFilePolicy(spec: SubprocessSpawnSpec | SubprocessTerminalSpawnSpec): void {
+  if (spec.sandbox !== undefined && spec.sandbox.mode !== 'danger-full-access') {
+    throw new Error(
+      `subprocess-e2b: per-call file policy ${JSON.stringify(spec.sandbox.mode)} is not implemented by this provider`,
+    )
+  }
+}
+
 /** E2B command manager registered as `ctx.subprocess`. */
 export class E2BSubprocessRuntime extends SubprocessRuntime {
   static inject = ['e2b']
@@ -139,6 +147,7 @@ export class E2BSubprocessRuntime extends SubprocessRuntime {
   /** @inheritdoc */
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
     if (this.disposing) throw new Error('subprocess-e2b: service is disposing')
+    rejectUnsupportedFilePolicy(spec)
     const program = spec.argv[0]
     if (program === undefined || program.length === 0) {
       throw new Error('invalid argv: expected a non-empty program name at argv[0]')
@@ -163,6 +172,7 @@ export class E2BSubprocessRuntime extends SubprocessRuntime {
   /** @inheritdoc */
   async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     if (this.disposing) throw new Error('subprocess-e2b: service is disposing')
+    rejectUnsupportedFilePolicy(spec)
     const program = spec.argv[0]
     if (program === undefined || program.length === 0) {
       throw new Error('subprocess-e2b: terminal argv must contain a program')

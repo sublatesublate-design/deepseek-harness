@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-18-sound-security-patch-rework.md
-2026-08-18-sound-security-patch-rework.md: a90c255b2ca01a07e6eeb1496af37d030442b170
-2026-08-18-sound-security-patch-rework.zh.md: 09be83bd896b547860ef6b0d815babb939e4f6cf
+2026-08-18-sound-security-patch-rework.md: 9e283df6c3395d594fa92320f9e03c8feab222c4
+2026-08-18-sound-security-patch-rework.zh.md: fe02755c56971e24be026840358cafb9e85c446c
